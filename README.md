@@ -35,6 +35,16 @@ cmake --build build
   --results results/benchmark_results.csv
 ```
 
+To also save computed operation outputs for inspection:
+
+```bash
+./build/utility_bench \
+  --data data/generated/tiny_1k/transactions.csv \
+  --results results/benchmark_results.csv \
+  --save-outputs \
+  --output-dir results/outputs/tiny_1k
+```
+
 The first baseline measures compute-only timing for:
 
 ```text
@@ -44,4 +54,13 @@ masked_sum_amount_channel_5
 ```
 
 CSV loading time is printed separately and is not included in the compute timing.
+Output file writing is also excluded from compute timing.
 
+Saved output files use this shape:
+
+```text
+results/outputs/tiny_1k/
+  plain_vector_add_x1_x2.csv
+  plain_linear_score.csv
+  plain_masked_sum_amount_channel_5.txt
+```

@@ -23,9 +23,15 @@ data/**/*.ipc
 
 # Benchmark outputs
 results/*.csv
+results/**/*.csv
+results/*.txt
+results/**/*.txt
 results/*.json
+results/**/*.json
 results/*.png
+results/**/*.png
 results/*.html
+results/**/*.html
 
 # Python local files
 __pycache__/

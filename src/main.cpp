@@ -1,24 +1,30 @@
 #include "csv_loader.h"
+#include "output_writer.h"
 #include "plain_ops.h"
 #include "result_writer.h"
 #include "timer.h"
 
+#include <cstdlib>
 #include <exception>
 #include <filesystem>
 #include <iostream>
 #include <string>
+#include <utility>
 
 namespace {
 
 struct CliArgs {
     std::string data_path = "data/generated/tiny_1k/transactions.csv";
     std::filesystem::path results_path = "results/benchmark_results.csv";
+    bool save_outputs = false;
+    std::filesystem::path output_dir = "results/outputs/tiny_1k";
 };
 
 void print_usage(const char* program) {
     std::cerr
         << "Usage: " << program << " [--data transactions.csv] "
-        << "[--results results/benchmark_results.csv]\n\n"
+        << "[--results results/benchmark_results.csv] "
+        << "[--save-outputs] [--output-dir results/outputs/tiny_1k]\n\n"
         << "Runs plaintext baselines used as comparison targets for later "
         << "OpenFHE benchmarks.\n";
 }
@@ -50,6 +56,19 @@ CliArgs parse_args(int argc, char** argv) {
             continue;
         }
 
+        if (flag == "--save-outputs") {
+            args.save_outputs = true;
+            continue;
+        }
+
+        if (flag == "--output-dir") {
+            if (i + 1 >= argc) {
+                throw std::runtime_error("--output-dir requires a path");
+            }
+            args.output_dir = argv[++i];
+            continue;
+        }
+
         throw std::runtime_error("unknown argument: " + flag);
     }
 
@@ -76,6 +95,32 @@ BenchmarkResult run_plain_operation(
     return result;
 }
 
+struct VectorOperationResult {
+    BenchmarkResult benchmark;
+    std::vector<double> values;
+};
+
+VectorOperationResult run_plain_vector_operation(
+    const Transactions& data,
+    const std::string& operation,
+    std::vector<double> (*operation_fn)(const Transactions&)) {
+    // Timing starts after CSV loading and stops before optional output writes.
+    // This mirrors the future OpenFHE split between compute and serialization.
+    const Timer timer;
+    std::vector<double> values = operation_fn(data);
+    const double elapsed_ms = timer.elapsed_ms();
+
+    BenchmarkResult benchmark;
+    benchmark.operation = operation;
+    benchmark.scheme = "plain_cpp";
+    benchmark.rows = data.size();
+    benchmark.plain_time_ms = elapsed_ms;
+    benchmark.result_value = checksum(values);
+    benchmark.notes = "compute_only_no_io";
+
+    return {benchmark, std::move(values)};
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -89,23 +134,38 @@ int main(int argc, char** argv) {
         std::cout << "Loaded " << data.size() << " rows in "
                   << load_ms << " ms\n";
 
-        const BenchmarkResult vector_add = run_plain_operation(
+        const VectorOperationResult vector_add = run_plain_vector_operation(
             data,
             "vector_add_x1_x2",
-            plaintext_vector_add_checksum);
-        append_result_csv(args.results_path, vector_add);
+            plaintext_vector_add_values);
+        append_result_csv(args.results_path, vector_add.benchmark);
 
-        const BenchmarkResult linear_score = run_plain_operation(
+        const VectorOperationResult linear_score = run_plain_vector_operation(
             data,
             "linear_score",
-            plaintext_linear_score_checksum);
-        append_result_csv(args.results_path, linear_score);
+            plaintext_linear_score_values);
+        append_result_csv(args.results_path, linear_score.benchmark);
 
         const BenchmarkResult masked_sum = run_plain_operation(
             data,
             "masked_sum_amount_channel_5",
             plaintext_masked_sum_channel_5);
         append_result_csv(args.results_path, masked_sum);
+
+        if (args.save_outputs) {
+            write_vector_output_csv(
+                args.output_dir / "plain_vector_add_x1_x2.csv",
+                data.row_id,
+                vector_add.values);
+            write_vector_output_csv(
+                args.output_dir / "plain_linear_score.csv",
+                data.row_id,
+                linear_score.values);
+            write_scalar_output_txt(
+                args.output_dir / "plain_masked_sum_amount_channel_5.txt",
+                masked_sum.result_value);
+            std::cout << "Wrote operation outputs: " << args.output_dir << '\n';
+        }
 
         std::cout << "Wrote results: " << args.results_path << '\n';
         std::cout << "Plain benchmarks complete.\n";
@@ -115,4 +175,3 @@ int main(int argc, char** argv) {
         return 1;
     }
 }
-

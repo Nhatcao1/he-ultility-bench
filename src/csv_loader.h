@@ -11,6 +11,7 @@
 // The first plaintext benchmarks only need the numeric columns that map
 // directly to later HE experiments, so we avoid carrying unused metadata.
 struct Transactions {
+    std::vector<std::size_t> row_id;
     std::vector<double> x1;
     std::vector<double> x2;
     std::vector<double> x3;
@@ -20,7 +21,7 @@ struct Transactions {
     std::vector<int> mask_channel_5;
     std::vector<int> label;
 
-    std::size_t size() const { return x1.size(); }
+    std::size_t size() const { return row_id.size(); }
 };
 
 inline std::vector<std::string> split_csv_line(const std::string& line) {
@@ -66,6 +67,7 @@ inline Transactions load_transactions_csv(const std::string& path) {
         }
 
         // Column positions follow scripts/generate_benchmark_data.py.
+        data.row_id.push_back(static_cast<std::size_t>(std::stoull(fields[0])));
         data.x1.push_back(std::stod(fields[5]));
         data.x2.push_back(std::stod(fields[6]));
         data.x3.push_back(std::stod(fields[7]));
@@ -82,4 +84,3 @@ inline Transactions load_transactions_csv(const std::string& path) {
 
     return data;
 }
-
