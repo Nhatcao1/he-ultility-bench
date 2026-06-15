@@ -1,0 +1,39 @@
+# Build artifacts
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+compile_commands.json
+
+# Generated benchmark data
+data/*.csv
+data/**/*.csv
+data/*.parquet
+data/**/*.parquet
+data/*.npy
+data/**/*.npy
+data/*.npz
+data/**/*.npz
+data/*.bin
+data/**/*.bin
+data/*.arrow
+data/**/*.arrow
+data/*.ipc
+data/**/*.ipc
+
+# Benchmark outputs
+results/*.csv
+results/*.json
+results/*.png
+results/*.html
+
+# Python local files
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# OS/editor files
+.DS_Store
+.idea/
+.vscode/
