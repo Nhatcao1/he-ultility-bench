@@ -11,7 +11,7 @@
 // intentionally set them to zero so the schema stays stable from day one.
 struct BenchmarkResult {
     std::string operation;
-    std::string scheme;
+    std::string backend;
     std::size_t rows = 0;
     std::size_t threads = 1;
     double plain_time_ms = 0.0;
@@ -44,7 +44,7 @@ inline void append_result_csv(
 
     if (write_header) {
         output
-            << "operation,scheme,rows,threads,plain_time_ms,encode_time_ms,"
+            << "operation,backend,rows,threads,plain_time_ms,encode_time_ms,"
             << "encrypt_time_ms,he_eval_time_ms,decrypt_time_ms,decode_time_ms,"
             << "total_he_time_ms,operation_slowdown,end_to_end_slowdown,"
             << "result_value,notes\n";
@@ -52,7 +52,7 @@ inline void append_result_csv(
 
     output << std::fixed << std::setprecision(6)
            << result.operation << ','
-           << result.scheme << ','
+           << result.backend << ','
            << result.rows << ','
            << result.threads << ','
            << result.plain_time_ms << ','

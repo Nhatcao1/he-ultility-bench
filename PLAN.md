@@ -343,7 +343,7 @@ run_id
 date
 machine
 operation
-scheme
+backend
 rows
 columns
 slots_per_ciphertext

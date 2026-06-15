@@ -32,7 +32,6 @@ cmake --build build
 ```bash
 ./build/utility_bench \
   --data data/generated/tiny_1k/transactions.csv \
-  --scheme plain \
   --bench all_plain \
   --threads 1 4 8 \
   --results results/benchmark_results.csv
@@ -43,7 +42,6 @@ Run one benchmark:
 ```bash
 ./build/utility_bench \
   --data data/generated/tiny_1k/transactions.csv \
-  --scheme plain \
   --bench vector_add_x1_x2 \
   --threads 1 4 8
 ```
@@ -53,7 +51,6 @@ Run several benchmarks:
 ```bash
 ./build/utility_bench \
   --data data/generated/tiny_1k/transactions.csv \
-  --scheme plain \
   --bench vector_add_x1_x2 \
   --bench masked_sum_amount_channel_5 \
   --threads 1 4 8
@@ -70,7 +67,6 @@ To also save computed operation outputs for inspection:
 ```bash
 ./build/utility_bench \
   --data data/generated/tiny_1k/transactions.csv \
-  --scheme plain \
   --bench all_plain \
   --threads 1 4 8 \
   --results results/benchmark_results.csv \
@@ -95,7 +91,7 @@ Output file writing is also excluded from compute timing.
 Each selected benchmark is run once per requested thread count.
 
 If you already have an older `results/benchmark_results.csv` from before the
-`threads` column was added, remove it before the next run:
+current `backend` and `threads` columns were added, remove it before the next run:
 
 ```bash
 rm -f results/benchmark_results.csv

@@ -22,7 +22,6 @@ namespace {
 struct CliArgs {
     std::string data_path = "data/generated/tiny_1k/transactions.csv";
     std::filesystem::path results_path = "results/benchmark_results.csv";
-    std::string scheme = "plain";
     std::vector<std::string> benches = {"all_plain"};
     std::vector<std::size_t> thread_counts = {1, 4, 8};
     bool save_outputs = false;
@@ -39,7 +38,7 @@ struct BenchmarkDefinition {
 void print_usage(const char* program) {
     std::cerr
         << "Usage: " << program << " [--data transactions.csv] "
-        << "[--scheme plain] [--bench all_plain|benchmark_name] "
+        << "[--bench all_plain|benchmark_name] "
         << "[--threads 1 4 8] "
         << "[--results results/benchmark_results.csv] "
         << "[--save-outputs] [--output-dir results/outputs/tiny_1k]\n\n"
@@ -80,14 +79,6 @@ CliArgs parse_args(int argc, char** argv) {
                 throw std::runtime_error("--results requires a path");
             }
             args.results_path = argv[++i];
-            continue;
-        }
-
-        if (flag == "--scheme") {
-            if (i + 1 >= argc) {
-                throw std::runtime_error("--scheme requires a value");
-            }
-            args.scheme = argv[++i];
             continue;
         }
 
@@ -151,7 +142,7 @@ BenchmarkResult run_plain_operation(
 
     BenchmarkResult result;
     result.operation = operation;
-    result.scheme = "plain_cpp";
+    result.backend = "plain_cpp";
     result.rows = data.size();
     result.threads = actual_threads;
     result.plain_time_ms = elapsed_ms;
@@ -179,7 +170,7 @@ VectorOperationResult run_plain_vector_operation(
 
     BenchmarkResult benchmark;
     benchmark.operation = operation;
-    benchmark.scheme = "plain_cpp";
+    benchmark.backend = "plain_cpp";
     benchmark.rows = data.size();
     benchmark.threads = actual_threads;
     benchmark.plain_time_ms = elapsed_ms;
@@ -295,10 +286,6 @@ std::vector<std::string> expand_benchmarks(
 int main(int argc, char** argv) {
     try {
         const CliArgs args = parse_args(argc, argv);
-        if (args.scheme != "plain") {
-            throw std::runtime_error(
-                "only --scheme plain is implemented in this build");
-        }
 
         std::cout << "Loading transactions: " << args.data_path << '\n';
         const Timer load_timer;
@@ -322,7 +309,7 @@ int main(int argc, char** argv) {
                     benchmark.save_output(data, thread_count, args.output_dir);
                 }
 
-                std::cout << "Ran " << result.scheme << ':' << result.operation
+                std::cout << "Ran " << result.backend << ':' << result.operation
                           << " threads=" << result.threads
                           << " in " << result.plain_time_ms << " ms\n";
             }
