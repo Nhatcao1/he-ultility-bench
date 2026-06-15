@@ -13,6 +13,7 @@ struct BenchmarkResult {
     std::string operation;
     std::string scheme;
     std::size_t rows = 0;
+    std::size_t threads = 1;
     double plain_time_ms = 0.0;
     double encode_time_ms = 0.0;
     double encrypt_time_ms = 0.0;
@@ -43,7 +44,7 @@ inline void append_result_csv(
 
     if (write_header) {
         output
-            << "operation,scheme,rows,plain_time_ms,encode_time_ms,"
+            << "operation,scheme,rows,threads,plain_time_ms,encode_time_ms,"
             << "encrypt_time_ms,he_eval_time_ms,decrypt_time_ms,decode_time_ms,"
             << "total_he_time_ms,operation_slowdown,end_to_end_slowdown,"
             << "result_value,notes\n";
@@ -53,6 +54,7 @@ inline void append_result_csv(
            << result.operation << ','
            << result.scheme << ','
            << result.rows << ','
+           << result.threads << ','
            << result.plain_time_ms << ','
            << result.encode_time_ms << ','
            << result.encrypt_time_ms << ','
@@ -65,4 +67,3 @@ inline void append_result_csv(
            << result.result_value << ','
            << result.notes << '\n';
 }
-
