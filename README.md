@@ -7,6 +7,7 @@ OpenFHE CKKS packed `EvalSum` implementation.
 
 - [CKKS depth recommendations](docs/CKKS_DEPTH_RECOMMENDATIONS.md)
 - [Encrypted comparison next steps](docs/ENCRYPTED_COMPARISON_NEXT_STEPS.md)
+- [FedAvg merge benchmark](docs/FEDAVG_BENCH_PLAN.md)
 
 ## Generate Test Data
 
@@ -76,6 +77,28 @@ These benchmarks use encrypted one-hot customer masks and encrypted
 `risk_weight` values. `tiny_join_onehot_amount_risk` also encrypts `amount`.
 They avoid scalar encrypted equality for now; scalar equality and range
 comparison remain separate scheme-switching work.
+
+For FedAvg merge fixtures:
+
+```bash
+python3 scripts/generate_fedavg_fixtures.py
+python3 scripts/test_fedavg_fixtures.py
+```
+
+Run the FedAvg benchmark:
+
+```bash
+./build/fedavg_bench \
+  --fixture data/generated_fedavg/mini_mlp_75_c4 \
+  --backend all \
+  --threads 1 \
+  --ckks-ring-dim 0 \
+  --ckks-batch-size 0 \
+  --ckks-depth 1 \
+  --ckks-scale-bits 50 \
+  --ckks-first-mod-bits 60 \
+  --results results/fedavg_results.csv
+```
 
 For CKKS aggregation, `tiny_1k` is only a smoke test. It can be smaller than the
 available CKKS slot count, so it may underfill SIMD slots. The benchmark does
