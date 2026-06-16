@@ -668,6 +668,19 @@ encrypted_join_tiny_onehot
 encrypted_compare_amount_gt_threshold
 ```
 
+First implemented tiny benchmarks:
+
+```text
+tiny_lookup_onehot_risk_weight
+tiny_join_onehot_amount_risk
+```
+
+These use encrypted one-hot customer masks. The lookup benchmark computes the
+selected `risk_weight` checksum. The join benchmark computes the checksum of
+`amount * risk_weight` after one-hot lookup. Scalar encrypted equality and
+encrypted range comparison stay separate because they need comparison-like
+machinery.
+
 This is deliberately separate from the 1k/10k/100k performance datasets because
 naive fully encrypted joins can scale as:
 

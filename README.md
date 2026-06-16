@@ -40,6 +40,43 @@ data/generated_tiny_crypto_query/join_lookup_16/
 Use this generator for encrypted-key lookup/join experiments. It is not meant
 for throughput claims.
 
+## Run Tiny Crypto Query Benchmarks
+
+Generate the tiny fixture first:
+
+```bash
+python3 scripts/generate_tiny_crypto_query_data.py
+```
+
+Then run the one-hot encrypted lookup and join-product benchmarks:
+
+```bash
+./build/utility_bench \
+  --tiny-query-dir data/generated_tiny_crypto_query/join_lookup_16 \
+  --bench all_tiny_query \
+  --backend all \
+  --threads 1 \
+  --ckks-ring-dim 0 \
+  --ckks-batch-size 16 \
+  --ckks-depth 2 \
+  --ckks-scale-bits 50 \
+  --ckks-first-mod-bits 60 \
+  --results results/benchmark_results_tiny_query.csv
+```
+
+Available tiny query benchmarks:
+
+```text
+tiny_lookup_onehot_risk_weight
+tiny_join_onehot_amount_risk
+all_tiny_query
+```
+
+These benchmarks use encrypted one-hot customer masks and encrypted
+`risk_weight` values. `tiny_join_onehot_amount_risk` also encrypts `amount`.
+They avoid scalar encrypted equality for now; scalar equality and range
+comparison remain separate scheme-switching work.
+
 For CKKS aggregation, `tiny_1k` is only a smoke test. It can be smaller than the
 available CKKS slot count, so it may underfill SIMD slots. The benchmark does
 not require ring-shaped row counts; it records `slots_per_ciphertext`,

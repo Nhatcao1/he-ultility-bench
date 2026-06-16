@@ -1,10 +1,12 @@
 #include "csv_loader.h"
 #ifdef UTILITY_BENCH_WITH_OPENFHE
 #include "ckks_sum_amount.h"
+#include "ckks_tiny_query.h"
 #endif
 #include "output_writer.h"
 #include "plain_ops.h"
 #include "result_writer.h"
+#include "tiny_query_loader.h"
 #include "timer.h"
 
 #include <cstdlib>
@@ -30,6 +32,7 @@ enum class BackendMode {
 struct CliArgs {
     std::string data_path = "data/generated/tiny_1k/transactions.csv";
     std::string customers_path;
+    std::filesystem::path tiny_query_dir = "data/generated_tiny_crypto_query/join_lookup_16";
     std::filesystem::path results_path = "results/benchmark_results.csv";
     std::vector<std::string> benches = {"sum_amount"};
     std::vector<std::size_t> thread_counts = {1, 4, 8};
@@ -50,10 +53,16 @@ struct BenchmarkDefinition {
     std::function<void(const Transactions&, std::size_t, const std::filesystem::path&)> save_output;
 };
 
+struct TinyBenchmarkDefinition {
+    std::string name;
+    std::function<BenchmarkResult(const TinyCryptoQueryData&)> run;
+};
+
 void print_usage(const char* program) {
     std::cerr
         << "Usage: " << program << " [--data transactions.csv] "
         << "[--customers customers.csv] "
+        << "[--tiny-query-dir data/generated_tiny_crypto_query/join_lookup_16] "
         << "[--bench all_agg|benchmark_name] "
         << "[--backend plain_cpp|openfhe_ckks|all] "
         << "[--threads 1 4 8] [--max-rows 10] "
@@ -66,7 +75,9 @@ void print_usage(const char* program) {
         << "Available aggregation benchmarks:\n"
         << "  sum_amount\n"
         << "  weighted_sum_amount_risk\n"
-        << "  select_amount_gt_5000\n\n"
+        << "  select_amount_gt_5000\n"
+        << "  tiny_lookup_onehot_risk_weight\n"
+        << "  tiny_join_onehot_amount_risk\n\n"
         << "Default backend: plain_cpp.\n"
         << "Default OpenFHE thread counts: 1 4 8.\n";
 }
@@ -117,6 +128,14 @@ CliArgs parse_args(int argc, char** argv) {
                 throw std::runtime_error("--customers requires a path");
             }
             args.customers_path = argv[++i];
+            continue;
+        }
+
+        if (flag == "--tiny-query-dir") {
+            if (i + 1 >= argc) {
+                throw std::runtime_error("--tiny-query-dir requires a path");
+            }
+            args.tiny_query_dir = argv[++i];
             continue;
         }
 
@@ -304,6 +323,54 @@ std::map<std::string, BenchmarkDefinition> plain_benchmarks() {
     return benchmarks;
 }
 
+BenchmarkResult run_plain_tiny_operation(
+    const TinyCryptoQueryData& data,
+    const std::string& operation,
+    double (*operation_fn)(const TinyCryptoQueryData&)) {
+    const Timer timer;
+    const double value = operation_fn(data);
+    const double elapsed_ms = timer.elapsed_ms();
+
+    BenchmarkResult result;
+    result.operation = operation;
+    result.backend = "plain_cpp";
+    result.rows = data.size();
+    result.threads = 1;
+    result.plain_time_ms = elapsed_ms;
+    result.result_value = value;
+    result.baseline_value = value;
+    result.notes = "tiny_crypto_query;expected_csv_baseline;std_single_thread_baseline";
+    return result;
+}
+
+std::map<std::string, TinyBenchmarkDefinition> tiny_benchmarks() {
+    std::map<std::string, TinyBenchmarkDefinition> benchmarks;
+
+    benchmarks.emplace(
+        "tiny_lookup_onehot_risk_weight",
+        TinyBenchmarkDefinition{
+            "tiny_lookup_onehot_risk_weight",
+            [](const TinyCryptoQueryData& data) {
+                return run_plain_tiny_operation(
+                    data,
+                    "tiny_lookup_onehot_risk_weight",
+                    plaintext_tiny_lookup_onehot_risk_weight);
+            }});
+
+    benchmarks.emplace(
+        "tiny_join_onehot_amount_risk",
+        TinyBenchmarkDefinition{
+            "tiny_join_onehot_amount_risk",
+            [](const TinyCryptoQueryData& data) {
+                return run_plain_tiny_operation(
+                    data,
+                    "tiny_join_onehot_amount_risk",
+                    plaintext_tiny_join_onehot_amount_risk);
+            }});
+
+    return benchmarks;
+}
+
 std::vector<std::string> expand_benchmarks(
     const std::vector<std::string>& requested,
     const std::map<std::string, BenchmarkDefinition>& available) {
@@ -340,6 +407,49 @@ std::vector<std::string> expand_benchmarks(
     }
 
     return expanded;
+}
+
+std::vector<std::string> expand_tiny_benchmarks(
+    const std::vector<std::string>& requested,
+    const std::map<std::string, TinyBenchmarkDefinition>& available) {
+    std::vector<std::string> expanded;
+    std::set<std::string> seen;
+
+    for (const std::string& name : requested) {
+        if (name == "all_tiny_query") {
+            for (const auto& entry : available) {
+                if (seen.insert(entry.first).second) {
+                    expanded.push_back(entry.first);
+                }
+            }
+            continue;
+        }
+
+        if (available.find(name) == available.end()) {
+            std::ostringstream message;
+            message << "unknown tiny benchmark: " << name << ". Available:";
+            for (const auto& entry : available) {
+                message << ' ' << entry.first;
+            }
+            message << " all_tiny_query";
+            throw std::runtime_error(message.str());
+        }
+
+        if (seen.insert(name).second) {
+            expanded.push_back(name);
+        }
+    }
+
+    return expanded;
+}
+
+bool request_contains_tiny_benchmark(const std::vector<std::string>& requested) {
+    for (const std::string& name : requested) {
+        if (name == "all_tiny_query" || name.rfind("tiny_", 0) == 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool benchmark_needs_customers(const std::string& benchmark_name) {
@@ -416,11 +526,99 @@ BenchmarkResult run_openfhe_ckks_benchmark(
 #endif
 }
 
+BenchmarkResult run_openfhe_tiny_benchmark(
+    const TinyCryptoQueryData& data,
+    const std::string& operation,
+    std::size_t thread_count,
+    const BenchmarkResult& baseline,
+    const CliArgs& args) {
+    if (operation != "tiny_lookup_onehot_risk_weight" &&
+        operation != "tiny_join_onehot_amount_risk") {
+        throw std::runtime_error(
+            "OpenFHE tiny backend currently supports tiny_lookup_onehot_risk_weight "
+            "and tiny_join_onehot_amount_risk");
+    }
+
+#ifdef UTILITY_BENCH_WITH_OPENFHE
+    CkksSumConfig config;
+    config.requested_ring_dimension = args.ckks_ring_dim;
+    config.batch_size = args.ckks_batch_size;
+    config.multiplicative_depth = args.ckks_depth;
+    config.scaling_mod_size = args.ckks_scaling_mod_size;
+    config.first_mod_size = args.ckks_first_mod_size;
+
+    return openfhe_ckks_tiny_onehot_query(
+        data,
+        operation,
+        thread_count,
+        baseline.baseline_value,
+        baseline.plain_time_ms,
+        config);
+#else
+    (void)data;
+    (void)operation;
+    (void)thread_count;
+    (void)baseline;
+    (void)args;
+    throw std::runtime_error(
+        "OpenFHE tiny backend was requested but this binary was built without "
+        "UTILITY_BENCH_WITH_OPENFHE=ON");
+#endif
+}
+
+int run_tiny_query_mode(const CliArgs& args) {
+    std::cout << "Loading tiny crypto query data: " << args.tiny_query_dir << '\n';
+    const Timer load_timer;
+    const TinyCryptoQueryData data = load_tiny_crypto_query_dir(args.tiny_query_dir);
+    const double load_ms = load_timer.elapsed_ms();
+    std::cout << "Loaded " << data.size() << " tiny rows and "
+              << data.key_domain() << " customer keys in "
+              << load_ms << " ms\n";
+
+    const auto available_benchmarks = tiny_benchmarks();
+    const auto selected_benches = expand_tiny_benchmarks(args.benches, available_benchmarks);
+
+    for (const std::string& bench_name : selected_benches) {
+        const TinyBenchmarkDefinition& benchmark = available_benchmarks.at(bench_name);
+        const BenchmarkResult baseline = benchmark.run(data);
+
+        if (wants_plain_cpp(args.backend)) {
+            append_result_csv(args.results_path, baseline);
+            std::cout << "Ran " << baseline.backend << ':' << baseline.operation
+                      << " threads=" << baseline.threads
+                      << " in " << baseline.plain_time_ms << " ms"
+                      << " value=" << baseline.result_value << '\n';
+        }
+
+        for (const std::size_t thread_count : args.thread_counts) {
+            if (wants_openfhe_ckks(args.backend)) {
+                const BenchmarkResult result =
+                    run_openfhe_tiny_benchmark(data, bench_name, thread_count, baseline, args);
+                append_result_csv(args.results_path, result);
+                std::cout << "Ran " << result.backend << ':' << result.operation
+                          << " threads=" << result.threads
+                          << " he_total=" << result.total_he_time_ms << " ms"
+                          << " plain=" << result.plain_time_ms << " ms"
+                          << " abs_error=" << result.absolute_error
+                          << " rel_error=" << result.relative_error << '\n';
+            }
+        }
+    }
+
+    std::cout << "Wrote results: " << args.results_path << '\n';
+    std::cout << "Tiny crypto query benchmarks complete.\n";
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
     try {
         const CliArgs args = parse_args(argc, argv);
+
+        if (request_contains_tiny_benchmark(args.benches)) {
+            return run_tiny_query_mode(args);
+        }
 
         std::cout << "Loading transactions: " << args.data_path << '\n';
         const Timer load_timer;
