@@ -3,6 +3,10 @@
 Benchmark scaffold for comparing plaintext computation with future OpenFHE
 implementations.
 
+## Planning Notes
+
+- [CKKS depth recommendations](docs/CKKS_DEPTH_RECOMMENDATIONS.md)
+
 ## Generate Test Data
 
 ```bash
