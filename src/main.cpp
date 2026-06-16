@@ -64,7 +64,8 @@ void print_usage(const char* program) {
         << "OpenFHE CKKS EvalSum/rotation.\n\n"
         << "Available aggregation benchmarks:\n"
         << "  sum_amount\n"
-        << "  weighted_sum_amount_risk\n\n"
+        << "  weighted_sum_amount_risk\n"
+        << "  select_amount_gt_5000\n\n"
         << "Default backend: plain_cpp.\n"
         << "Default OpenFHE thread counts: 1 4 8.\n";
 }
@@ -286,6 +287,7 @@ std::map<std::string, BenchmarkDefinition> plain_benchmarks() {
     for (const auto& benchmark : {
              make_scalar_benchmark("sum_amount", plaintext_sum_amount),
              make_scalar_benchmark("weighted_sum_amount_risk", plaintext_weighted_sum_amount_risk),
+             make_scalar_benchmark("select_amount_gt_5000", plaintext_select_amount_gt_5000),
          }) {
         benchmarks.emplace(benchmark.name, benchmark);
     }
@@ -351,6 +353,12 @@ BenchmarkResult run_openfhe_ckks_benchmark(
     std::size_t thread_count,
     const BenchmarkResult& baseline,
     const CliArgs& args) {
+    if (operation == "select_amount_gt_5000") {
+        throw std::runtime_error(
+            "OpenFHE CKKS encrypted WHERE amount > 5000 is not implemented yet; "
+            "run --backend plain_cpp for the C++ predicate baseline");
+    }
+
     if (operation != "sum_amount" && operation != "weighted_sum_amount_risk") {
         throw std::runtime_error(
             "OpenFHE CKKS backend currently supports sum_amount and weighted_sum_amount_risk");

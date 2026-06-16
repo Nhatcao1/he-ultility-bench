@@ -102,6 +102,29 @@ dataset folder. Use `--customers path/to/customers.csv` to override it.
 Use `--bench all_agg` to run both `sum_amount` and
 `weighted_sum_amount_risk`.
 
+Plain C++ baseline for a real `WHERE amount > 5000` predicate:
+
+```bash
+./build/utility_bench \
+  --data data/generated/medium_100k/transactions.csv \
+  --bench select_amount_gt_5000 \
+  --backend plain_cpp \
+  --results results/benchmark_results_select_amount_gt_5000.csv
+```
+
+This benchmark represents:
+
+```sql
+SELECT amount
+FROM transactions
+WHERE amount > 5000;
+```
+
+Because the result CSV stores scalar values, `result_value` is the checksum /
+sum of the selected output vector. The OpenFHE encrypted predicate version is
+not implemented yet; it will need CKKS polynomial comparison or OpenFHE scheme
+switching rather than a precomputed mask.
+
 Default backend is `plain_cpp`, and the default benchmark is `sum_amount`:
 
 ```bash

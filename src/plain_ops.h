@@ -89,3 +89,15 @@ inline double plaintext_weighted_sum_amount_risk(
         return data.amount[i] * data.risk_weight_by_row[i];
     });
 }
+
+// Plain C++ baseline for:
+//   SELECT amount FROM transactions WHERE amount > 5000;
+// The benchmark schema stores scalar correctness values, so this returns the
+// checksum/SUM of the selected output vector.
+inline double plaintext_select_amount_gt_5000(
+    const Transactions& data,
+    std::size_t thread_count) {
+    return parallel_sum(data.size(), thread_count, [&](std::size_t i) {
+        return data.amount[i] > 5000.0 ? data.amount[i] : 0.0;
+    });
+}
