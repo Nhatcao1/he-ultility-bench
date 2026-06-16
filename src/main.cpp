@@ -63,7 +63,7 @@ void print_usage(const char* program) {
         << "Available aggregation benchmarks:\n"
         << "  sum_amount\n\n"
         << "Default backend: plain_cpp.\n"
-        << "Default thread counts: 1 4 8.\n";
+        << "Default OpenFHE thread counts: 1 4 8.\n";
 }
 
 BackendMode parse_backend_mode(const std::string& value) {
@@ -238,7 +238,7 @@ BenchmarkResult run_plain_operation(
     result.plain_time_ms = elapsed_ms;
     result.result_value = value;
     result.baseline_value = value;
-    result.notes = "compute_only_no_io;std_thread_baseline;single_run_thread_creation_included";
+    result.notes = "compute_only_no_io;std_single_thread_baseline";
     return result;
 }
 
@@ -367,24 +367,24 @@ int main(int argc, char** argv) {
             args.benches,
             available_benchmarks);
 
-        for (const std::size_t thread_count : args.thread_counts) {
-            for (const std::string& bench_name : selected_benches) {
-                const BenchmarkDefinition& benchmark = available_benchmarks.at(bench_name);
-                const BenchmarkResult baseline = benchmark.run(data, thread_count);
+        for (const std::string& bench_name : selected_benches) {
+            const BenchmarkDefinition& benchmark = available_benchmarks.at(bench_name);
+            const BenchmarkResult baseline = benchmark.run(data, 1);
 
-                if (wants_plain_cpp(args.backend)) {
-                    append_result_csv(args.results_path, baseline);
+            if (wants_plain_cpp(args.backend)) {
+                append_result_csv(args.results_path, baseline);
 
-                    if (args.save_outputs) {
-                        benchmark.save_output(data, baseline.threads, args.output_dir);
-                    }
-
-                    std::cout << "Ran " << baseline.backend << ':' << baseline.operation
-                              << " threads=" << baseline.threads
-                              << " in " << baseline.plain_time_ms << " ms"
-                              << " value=" << baseline.result_value << '\n';
+                if (args.save_outputs) {
+                    benchmark.save_output(data, baseline.threads, args.output_dir);
                 }
 
+                std::cout << "Ran " << baseline.backend << ':' << baseline.operation
+                          << " threads=" << baseline.threads
+                          << " in " << baseline.plain_time_ms << " ms"
+                          << " value=" << baseline.result_value << '\n';
+            }
+
+            for (const std::size_t thread_count : args.thread_counts) {
                 if (wants_openfhe_ckks(args.backend)) {
                     const BenchmarkResult result =
                         run_openfhe_ckks_benchmark(data, bench_name, thread_count, baseline, args);

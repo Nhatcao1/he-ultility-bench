@@ -62,7 +62,6 @@ Plain baseline only:
   --data data/generated/tiny_1k/transactions.csv \
   --bench sum_amount \
   --backend plain_cpp \
-  --threads 1 4 8 \
   --results results/benchmark_results.csv
 ```
 
@@ -82,16 +81,14 @@ rm -f results/benchmark_results.csv
   --results results/benchmark_results.csv
 ```
 
-Default backend is `plain_cpp`, and the default benchmark is `sum_amount` across
-`1 4 8` threads:
+Default backend is `plain_cpp`, and the default benchmark is `sum_amount`:
 
 ```bash
 ./build/utility_bench \
-  --data data/generated/tiny_1k/transactions.csv \
-  --threads 1 4 8
+  --data data/generated/tiny_1k/transactions.csv
 ```
 
-If `--threads` is omitted, the runner uses the default comparison set:
+If `--threads` is omitted, the OpenFHE backend uses the default comparison set:
 
 ```text
 1 4 8
@@ -118,15 +115,12 @@ SELECT SUM(amount) FROM transactions;
 
 CSV loading time is printed separately and is not included in the compute timing.
 Output file writing is also excluded from compute timing.
-Each selected benchmark is run once per requested thread count.
+Plain C++ is always measured once as a single-thread baseline. OpenFHE CKKS is
+run once per requested thread count and compared back to that same single-thread
+plain baseline.
 For OpenFHE rows, `total_he_time_ms` includes encode, encrypt, homomorphic
 evaluation, decrypt, and decode. OpenFHE context/key generation is recorded as
 `setup_time_ms` but is kept separate from the online query timing.
-For small row counts such as `100k`, the plain C++ multi-thread rows can be
-slower than the 1-thread row because creating `std::thread` workers costs more
-than summing the vector. Use those rows as an honest baseline for this runner,
-not as proof that aggregation is hard for normal C++. Larger datasets make the
-threading comparison more meaningful.
 
 CKKS uses 128-bit security in this first version. Tunable parameters:
 
@@ -150,8 +144,6 @@ Saved output files use this shape:
 ```text
 results/outputs/tiny_1k/
   plain_sum_amount_threads_1.txt
-  plain_sum_amount_threads_4.txt
-  plain_sum_amount_threads_8.txt
   openfhe_ckks_sum_amount_threads_1.txt
   openfhe_ckks_sum_amount_threads_4.txt
   openfhe_ckks_sum_amount_threads_8.txt
