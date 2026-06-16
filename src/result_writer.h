@@ -40,7 +40,7 @@ struct BenchmarkResult {
     std::size_t multiplicative_depth = 0;
     std::size_t scaling_mod_size = 0;
     std::size_t first_mod_size = 0;
-    std::size_t rotation_count_estimate = 0;
+    std::size_t rotation_count_reported = 0;
     std::string notes;
 };
 
@@ -68,7 +68,7 @@ inline void append_result_csv(
             << "ciphertext_count,slots_per_ciphertext,used_slots_last_ciphertext,"
             << "padding_slots_last_ciphertext,slot_utilization,"
             << "requested_ring_dimension,actual_ring_dimension,security_bits,multiplicative_depth,"
-            << "scaling_mod_size,first_mod_size,rotation_count_estimate,notes\n";
+            << "scaling_mod_size,first_mod_size,rotation_count_reported,notes\n";
     }
 
     output << std::setprecision(std::numeric_limits<double>::max_digits10)
@@ -101,6 +101,6 @@ inline void append_result_csv(
            << result.multiplicative_depth << ','
            << result.scaling_mod_size << ','
            << result.first_mod_size << ','
-           << result.rotation_count_estimate << ','
+           << result.rotation_count_reported << ','
            << result.notes << '\n';
 }

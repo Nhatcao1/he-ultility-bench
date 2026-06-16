@@ -37,20 +37,6 @@ inline std::size_t ceil_div(std::size_t numerator, std::size_t denominator) {
     return (numerator + denominator - 1) / denominator;
 }
 
-inline std::size_t ceil_log2(std::size_t value) {
-    if (value <= 1) {
-        return 0;
-    }
-
-    std::size_t power = 1;
-    std::size_t result = 0;
-    while (power < value) {
-        power <<= 1U;
-        ++result;
-    }
-    return result;
-}
-
 inline double divide_or_zero(double numerator, double denominator) {
     return denominator == 0.0 ? 0.0 : numerator / denominator;
 }
@@ -138,7 +124,6 @@ inline BenchmarkResult openfhe_ckks_sum_amount(
     double encode_time_ms = 0.0;
     double encrypt_time_ms = 0.0;
     double he_eval_time_ms = 0.0;
-    std::size_t rotation_count_estimate = 0;
     bool has_total = false;
     Ciphertext<DCRTPoly> total_ciphertext;
 
@@ -173,7 +158,6 @@ inline BenchmarkResult openfhe_ckks_sum_amount(
             eval_input = cc->EvalMult(ciphertext, multiplier_plaintext);
         }
         auto chunk_sum = cc->EvalSum(eval_input, static_cast<uint32_t>(used_slots));
-        rotation_count_estimate += ceil_log2(used_slots);
         if (has_total) {
             total_ciphertext = cc->EvalAdd(total_ciphertext, chunk_sum);
         } else {
@@ -232,7 +216,7 @@ inline BenchmarkResult openfhe_ckks_sum_amount(
     result.multiplicative_depth = config.multiplicative_depth;
     result.scaling_mod_size = config.scaling_mod_size;
     result.first_mod_size = config.first_mod_size;
-    result.rotation_count_estimate = rotation_count_estimate;
+    result.rotation_count_reported = 0;
     result.notes =
 #ifdef _OPENMP
         plaintext_multiplier == nullptr
