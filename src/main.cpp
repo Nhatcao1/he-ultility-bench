@@ -75,6 +75,7 @@ void print_usage(const char* program) {
         << "Available aggregation benchmarks:\n"
         << "  sum_amount\n"
         << "  weighted_sum_amount_risk\n"
+        << "  weighted_sum_amount_risk_encrypted\n"
         << "  select_amount_gt_5000\n"
         << "  tiny_lookup_onehot_risk_weight\n"
         << "  tiny_join_onehot_amount_risk\n\n"
@@ -315,6 +316,7 @@ std::map<std::string, BenchmarkDefinition> plain_benchmarks() {
     for (const auto& benchmark : {
              make_scalar_benchmark("sum_amount", plaintext_sum_amount),
              make_scalar_benchmark("weighted_sum_amount_risk", plaintext_weighted_sum_amount_risk),
+             make_scalar_benchmark("weighted_sum_amount_risk_encrypted", plaintext_weighted_sum_amount_risk),
              make_scalar_benchmark("select_amount_gt_5000", plaintext_select_amount_gt_5000),
          }) {
         benchmarks.emplace(benchmark.name, benchmark);
@@ -453,7 +455,8 @@ bool request_contains_tiny_benchmark(const std::vector<std::string>& requested) 
 }
 
 bool benchmark_needs_customers(const std::string& benchmark_name) {
-    return benchmark_name == "weighted_sum_amount_risk";
+    return benchmark_name == "weighted_sum_amount_risk" ||
+           benchmark_name == "weighted_sum_amount_risk_encrypted";
 }
 
 bool any_benchmark_needs_customers(const std::vector<std::string>& benchmark_names) {
@@ -478,10 +481,12 @@ BenchmarkResult run_openfhe_ckks_benchmark(
     const CliArgs& args) {
     if (operation != "sum_amount" &&
         operation != "weighted_sum_amount_risk" &&
+        operation != "weighted_sum_amount_risk_encrypted" &&
         operation != "select_amount_gt_5000") {
         throw std::runtime_error(
             "OpenFHE CKKS backend currently supports sum_amount, "
-            "weighted_sum_amount_risk, and select_amount_gt_5000");
+            "weighted_sum_amount_risk, weighted_sum_amount_risk_encrypted, "
+            "and select_amount_gt_5000");
     }
 
 #ifdef UTILITY_BENCH_WITH_OPENFHE
@@ -502,6 +507,15 @@ BenchmarkResult run_openfhe_ckks_benchmark(
 
     if (operation == "select_amount_gt_5000") {
         return openfhe_ckks_select_amount_gt_5000(
+            data,
+            thread_count,
+            baseline.baseline_value,
+            baseline.plain_time_ms,
+            config);
+    }
+
+    if (operation == "weighted_sum_amount_risk_encrypted") {
+        return openfhe_ckks_weighted_sum_amount_risk_encrypted(
             data,
             thread_count,
             baseline.baseline_value,

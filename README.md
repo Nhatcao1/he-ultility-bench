@@ -156,6 +156,27 @@ Use `--bench all_agg` to run both aggregate benchmarks, `sum_amount` and
 `weighted_sum_amount_risk`. `all_agg` does not include encrypted comparison
 benchmarks.
 
+For the all-encrypted numeric version, use:
+
+```bash
+rm -f results/benchmark_results_join_weighted_sum_encrypted_100k.csv
+./build/utility_bench \
+  --data data/generated/medium_100k/transactions.csv \
+  --bench weighted_sum_amount_risk_encrypted \
+  --backend all \
+  --threads 1 4 8 \
+  --ckks-ring-dim 0 \
+  --ckks-depth 2 \
+  --ckks-scale-bits 50 \
+  --ckks-first-mod-bits 60 \
+  --results results/benchmark_results_join_weighted_sum_encrypted_100k.csv
+```
+
+This encrypts both `amount` and the expanded `risk_weight` vector before the
+homomorphic multiply. The current medium join path still expands
+`customer_id -> risk_weight` before encryption; fully encrypted join-key
+matching is a separate encrypted equality/join problem.
+
 OpenFHE encrypted comparison for a real `WHERE amount > 5000` predicate:
 
 ```bash

@@ -681,6 +681,17 @@ selected `risk_weight` checksum. The join benchmark computes the checksum of
 encrypted range comparison stay separate because they need comparison-like
 machinery.
 
+For medium-scale join-like benchmarking, distinguish these two CKKS weighted
+sum variants:
+
+| Benchmark | Encrypted columns | Meaning |
+| --- | --- | --- |
+| `weighted_sum_amount_risk` | `amount` encrypted, `risk_weight` plaintext multiplier | Practical public-weight/reference baseline. |
+| `weighted_sum_amount_risk_encrypted` | `amount` encrypted, expanded `risk_weight` encrypted | All numeric values encrypted after lookup expansion. |
+
+Both still expand `customer_id -> risk_weight` before encryption. Fully
+encrypted join-key matching remains separate from this medium benchmark.
+
 This is deliberately separate from the 1k/10k/100k performance datasets because
 naive fully encrypted joins can scale as:
 
