@@ -7,21 +7,13 @@
 #include <string>
 #include <vector>
 
-// Minimal in-memory representation of transactions.csv.
-// The first plaintext benchmarks only need the numeric columns that map
-// directly to later HE experiments, so we avoid carrying unused metadata.
+// Minimal in-memory representation of transactions.csv for aggregation tests.
+// We intentionally load only the `amount` column because CSV loading is outside
+// benchmark timing, and the first HE target is SELECT SUM(amount).
 struct Transactions {
-    std::vector<std::size_t> row_id;
-    std::vector<double> x1;
-    std::vector<double> x2;
-    std::vector<double> x3;
-    std::vector<int> i1;
-    std::vector<int> i2;
     std::vector<double> amount;
-    std::vector<int> mask_channel_5;
-    std::vector<int> label;
 
-    std::size_t size() const { return row_id.size(); }
+    std::size_t size() const { return amount.size(); }
 };
 
 inline std::vector<std::string> split_csv_line(const std::string& line) {
@@ -66,16 +58,8 @@ inline Transactions load_transactions_csv(const std::string& path) {
                 std::to_string(fields.size()));
         }
 
-        // Column positions follow scripts/generate_benchmark_data.py.
-        data.row_id.push_back(static_cast<std::size_t>(std::stoull(fields[0])));
-        data.x1.push_back(std::stod(fields[5]));
-        data.x2.push_back(std::stod(fields[6]));
-        data.x3.push_back(std::stod(fields[7]));
-        data.i1.push_back(std::stoi(fields[8]));
-        data.i2.push_back(std::stoi(fields[9]));
+        // Column 10 is `amount` in scripts/generate_benchmark_data.py.
         data.amount.push_back(std::stod(fields[10]));
-        data.mask_channel_5.push_back(std::stoi(fields[11]));
-        data.label.push_back(std::stoi(fields[14]));
     }
 
     if (data.size() == 0) {

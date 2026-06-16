@@ -282,11 +282,9 @@ he-benchmark/
   CMakeLists.txt
 
   configs/
-    ckks_vector_add.json
-    ckks_weighted_sum.json
-    ckks_linear_inference.json
-    bfv_masked_count.json
-    query_sum_where_category.json
+    ckks_sum_amount_depth1_auto.json
+    ckks_sum_amount_depth1_ring8192.json
+    ckks_sum_amount_depth2_auto.json
 
   data/
     generated/

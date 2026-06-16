@@ -14,7 +14,6 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace {
@@ -22,7 +21,7 @@ namespace {
 struct CliArgs {
     std::string data_path = "data/generated/tiny_1k/transactions.csv";
     std::filesystem::path results_path = "results/benchmark_results.csv";
-    std::vector<std::string> benches = {"all_plain"};
+    std::vector<std::string> benches = {"all_agg"};
     std::vector<std::size_t> thread_counts = {1, 4, 8};
     bool save_outputs = false;
     std::filesystem::path output_dir = "results/outputs/tiny_1k";
@@ -30,7 +29,6 @@ struct CliArgs {
 
 struct BenchmarkDefinition {
     std::string name;
-    bool writes_vector_output = false;
     std::function<BenchmarkResult(const Transactions&, std::size_t)> run;
     std::function<void(const Transactions&, std::size_t, const std::filesystem::path&)> save_output;
 };
@@ -38,20 +36,14 @@ struct BenchmarkDefinition {
 void print_usage(const char* program) {
     std::cerr
         << "Usage: " << program << " [--data transactions.csv] "
-        << "[--bench all_plain|benchmark_name] "
+        << "[--bench all_agg|benchmark_name] "
         << "[--threads 1 4 8] "
         << "[--results results/benchmark_results.csv] "
         << "[--save-outputs] [--output-dir results/outputs/tiny_1k]\n\n"
-        << "Runs selected baselines used as comparison targets for later "
-        << "OpenFHE benchmarks.\n\n"
-        << "Available plaintext benchmarks:\n"
-        << "  vector_add_x1_x2\n"
-        << "  vector_mul_x1_x2\n"
-        << "  sum_x1\n"
-        << "  linear_score\n"
-        << "  masked_sum_amount_channel_5\n"
-        << "  masked_count_channel_5\n"
-        << "  masked_avg_amount_channel_5\n\n"
+        << "Runs aggregation baselines used as comparison targets for later "
+        << "OpenFHE CKKS EvalSum/rotation benchmarks.\n\n"
+        << "Available aggregation benchmarks:\n"
+        << "  sum_amount\n\n"
         << "Default thread counts: 1 4 8.\n";
 }
 
@@ -87,7 +79,7 @@ CliArgs parse_args(int argc, char** argv) {
                 throw std::runtime_error("--bench requires a benchmark name");
             }
             const std::string bench = argv[++i];
-            if (args.benches.size() == 1 && args.benches[0] == "all_plain") {
+            if (args.benches.size() == 1 && args.benches[0] == "all_agg") {
                 args.benches.clear();
             }
             args.benches.push_back(bench);
@@ -151,35 +143,6 @@ BenchmarkResult run_plain_operation(
     return result;
 }
 
-struct VectorOperationResult {
-    BenchmarkResult benchmark;
-    std::vector<double> values;
-};
-
-VectorOperationResult run_plain_vector_operation(
-    const Transactions& data,
-    const std::string& operation,
-    std::size_t thread_count,
-    std::vector<double> (*operation_fn)(const Transactions&, std::size_t)) {
-    // Timing starts after CSV loading and stops before optional output writes.
-    // This mirrors the future OpenFHE split between compute and serialization.
-    const std::size_t actual_threads = effective_thread_count(thread_count, data.size());
-    const Timer timer;
-    std::vector<double> values = operation_fn(data, actual_threads);
-    const double elapsed_ms = timer.elapsed_ms();
-
-    BenchmarkResult benchmark;
-    benchmark.operation = operation;
-    benchmark.backend = "plain_cpp";
-    benchmark.rows = data.size();
-    benchmark.threads = actual_threads;
-    benchmark.plain_time_ms = elapsed_ms;
-    benchmark.result_value = checksum(values);
-    benchmark.notes = "compute_only_no_io;std_thread_baseline";
-
-    return {benchmark, std::move(values)};
-}
-
 BenchmarkResult run_plain_scalar_benchmark(
     const Transactions& data,
     const std::string& operation,
@@ -188,33 +151,11 @@ BenchmarkResult run_plain_scalar_benchmark(
     return run_plain_operation(data, operation, thread_count, operation_fn);
 }
 
-BenchmarkDefinition make_vector_benchmark(
-    const std::string& name,
-    std::vector<double> (*operation_fn)(const Transactions&, std::size_t)) {
-    return BenchmarkDefinition{
-        name,
-        true,
-        [name, operation_fn](const Transactions& data, std::size_t thread_count) {
-            return run_plain_vector_operation(data, name, thread_count, operation_fn).benchmark;
-        },
-        [name, operation_fn](
-            const Transactions& data,
-            std::size_t thread_count,
-            const std::filesystem::path& output_dir) {
-            const std::vector<double> values = operation_fn(data, thread_count);
-            write_vector_output_csv(
-                output_dir / ("plain_" + name + "_threads_" + std::to_string(thread_count) + ".csv"),
-                data.row_id,
-                values);
-        }};
-}
-
 BenchmarkDefinition make_scalar_benchmark(
     const std::string& name,
     double (*operation_fn)(const Transactions&, std::size_t)) {
     return BenchmarkDefinition{
         name,
-        false,
         [name, operation_fn](const Transactions& data, std::size_t thread_count) {
             return run_plain_scalar_benchmark(data, name, thread_count, operation_fn);
         },
@@ -233,13 +174,7 @@ std::map<std::string, BenchmarkDefinition> plain_benchmarks() {
     std::map<std::string, BenchmarkDefinition> benchmarks;
 
     for (const auto& benchmark : {
-             make_vector_benchmark("vector_add_x1_x2", plaintext_vector_add_values),
-             make_vector_benchmark("vector_mul_x1_x2", plaintext_vector_mul_values),
-             make_vector_benchmark("linear_score", plaintext_linear_score_values),
-             make_scalar_benchmark("sum_x1", plaintext_sum_x1),
-             make_scalar_benchmark("masked_sum_amount_channel_5", plaintext_masked_sum_channel_5),
-             make_scalar_benchmark("masked_count_channel_5", plaintext_masked_count_channel_5),
-             make_scalar_benchmark("masked_avg_amount_channel_5", plaintext_masked_avg_amount_channel_5),
+             make_scalar_benchmark("sum_amount", plaintext_sum_amount),
          }) {
         benchmarks.emplace(benchmark.name, benchmark);
     }
@@ -254,7 +189,7 @@ std::vector<std::string> expand_benchmarks(
     std::set<std::string> seen;
 
     for (const std::string& name : requested) {
-        if (name == "all_plain") {
+        if (name == "all_agg") {
             for (const auto& entry : available) {
                 if (seen.insert(entry.first).second) {
                     expanded.push_back(entry.first);
@@ -269,7 +204,7 @@ std::vector<std::string> expand_benchmarks(
             for (const auto& entry : available) {
                 message << ' ' << entry.first;
             }
-            message << " all_plain";
+            message << " all_agg";
             throw std::runtime_error(message.str());
         }
 
