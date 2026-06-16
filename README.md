@@ -6,6 +6,7 @@ OpenFHE CKKS packed `EvalSum` implementation.
 ## Planning Notes
 
 - [CKKS depth recommendations](docs/CKKS_DEPTH_RECOMMENDATIONS.md)
+- [Encrypted comparison next steps](docs/ENCRYPTED_COMPARISON_NEXT_STEPS.md)
 
 ## Generate Test Data
 
@@ -23,6 +24,21 @@ medium_100k/
 ```
 
 Generated CSV files are ignored by Git.
+
+For tiny encrypted lookup/join/compare feasibility data:
+
+```bash
+python3 scripts/generate_tiny_crypto_query_data.py
+```
+
+This writes a deterministic tiny dataset under:
+
+```text
+data/generated_tiny_crypto_query/join_lookup_16/
+```
+
+Use this generator for encrypted-key lookup/join experiments. It is not meant
+for throughput claims.
 
 For CKKS aggregation, `tiny_1k` is only a smoke test. It can be smaller than the
 available CKKS slot count, so it may underfill SIMD slots. The benchmark does
@@ -119,6 +135,23 @@ OpenFHE encrypted comparison for a real `WHERE amount > 5000` predicate:
   --results results/benchmark_results_select_amount_gt_5000_tiny.csv
 ```
 
+For a very small comparison debug run, limit the loader to the first 10 rows:
+
+```bash
+./build/utility_bench \
+  --data data/generated/tiny_1k/transactions.csv \
+  --max-rows 10 \
+  --bench select_amount_gt_5000 \
+  --backend all \
+  --threads 1 \
+  --ckks-ring-dim 0 \
+  --ckks-batch-size 16 \
+  --ckks-depth 17 \
+  --ckks-scale-bits 50 \
+  --ckks-first-mod-bits 60 \
+  --results results/benchmark_results_select_amount_gt_5000_first10.csv
+```
+
 This benchmark represents:
 
 ```sql
@@ -131,12 +164,14 @@ Because the result CSV stores scalar values, `result_value` is the checksum /
 sum of the selected output vector. The OpenFHE version uses CKKS-to-FHEW scheme
 switching via OpenFHE comparison APIs, not a precomputed mask.
 
-Start with `tiny_1k` or `small_10k` for this benchmark, then scale up only
-after correctness and memory use look sane. OpenFHE's scheme
-switching docs note large memory use for many slots because of the linear
-transforms, and the performance docs note that CKKS/FHEW scheme switching uses
-higher-level OpenMP parallelization. Keep `--ckks-batch-size` small at first
-and sweep `--threads 1 4 8`.
+Start with `tiny_1k` for this benchmark, then scale up only after correctness
+and memory use look sane. For `medium_100k`, run `--threads 1` first and use a
+larger batch size such as `256` before attempting a full thread sweep. OpenFHE's
+scheme switching docs note large memory use for many slots because of the
+linear transforms, and the performance docs note that CKKS/FHEW scheme switching
+uses higher-level OpenMP parallelization. See
+[encrypted comparison next steps](docs/ENCRYPTED_COMPARISON_NEXT_STEPS.md) for
+the recommended run order and optimization plan.
 
 Default backend is `plain_cpp`, and the default benchmark is `sum_amount`:
 

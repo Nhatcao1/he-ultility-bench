@@ -56,6 +56,20 @@ For OpenFHE, prepare numeric benchmark extracts instead of feeding the whole Par
 | `medium_100k.csv` | 100,000 | First serious timings. |
 | `large_1m.csv` | 1,000,000 | Stress test after implementation is stable. |
 
+For encrypted-key query primitives, use a separate tiny dataset. Fully encrypted
+lookup/join/compare experiments are feasibility tests first, not throughput
+tests.
+
+| Dataset | Rows | Purpose |
+| --- | ---: | --- |
+| `generated_tiny_crypto_query/join_lookup_16` | 16 transactions, 16 customers | Encrypted equality, one-hot lookup, tiny encrypted join, and comparison masks. |
+
+Generate it with:
+
+```bash
+python3 scripts/generate_tiny_crypto_query_data.py
+```
+
 Recommended columns:
 
 | Column | Type | Usage |
@@ -155,6 +169,12 @@ filtered_value[i] = value[i] * mask[i]
 
 Start with plaintext or precomputed masks. Then benchmark encrypted predicate generation separately.
 
+Encrypted range filters such as `WHERE amount > 5000` are now tracked as an
+advanced benchmark because OpenFHE evaluates them through CKKS/FHEW
+scheme-switching comparison rather than cheap CKKS arithmetic. The current
+follow-up plan is in
+[docs/ENCRYPTED_COMPARISON_NEXT_STEPS.md](docs/ENCRYPTED_COMPARISON_NEXT_STEPS.md).
+
 ### Phase 3: Lookup Operations
 
 Lookups are common in feature engineering: customer risk weight, product price,
@@ -235,11 +255,12 @@ For the first code version, keep join preprocessing outside HE and focus on
 the encrypted post-join aggregate. Later, compare against DuckDB/Spark join
 baselines so we know the normal database cost too.
 
-## Simple ML Use Case
+## HE Operator Criteria For ML-Like Workloads
 
-Start with encrypted inference, not encrypted training.
+Do not start with a full ML framework or model-training pipeline. For OpenFHE,
+start with the encrypted operators that ML inference eventually needs.
 
-Recommended first model:
+The first ML-related benchmark should be a linear weighted sum:
 
 ```text
 score =
@@ -252,6 +273,18 @@ score =
 ```
 
 This matches the logic used in `gencode.ipynb` to create the synthetic label.
+It is also the core operator behind linear regression, logistic-regression
+score computation, linear SVM, and the linear layers of small neural networks.
+
+Important rule:
+
+```text
+Benchmark encrypted score computation first.
+Do not benchmark encrypted classification threshold yet.
+```
+
+The threshold/classification step needs comparison, which is the same expensive
+class of operation as encrypted `WHERE amount > 5000`.
 
 | Version | Description |
 | --- | --- |
@@ -260,7 +293,47 @@ This matches the logic used in `gencode.ipynb` to create the synthetic label.
 | CKKS encrypted features + plaintext weights | Practical HE inference benchmark. |
 | CKKS encrypted features + encrypted weights | More private, more expensive. |
 
-Measure:
+### Operator Priority
+
+| Priority | Benchmark | OpenFHE operation shape | ML meaning |
+| ---: | --- | --- | --- |
+| 1 | `linear_score_plain_weights` | `EvalMult(ct, plaintext weight)` + `EvalAdd` | Batched linear model over rows |
+| 2 | `inner_product_plain_weights` | `EvalInnerProduct(ct, plaintext weights)` or `EvalMult` + `EvalSum` | Dot product / linear score for feature vectors |
+| 3 | `linear_score_encrypted_weights` | `EvalMult(ct_feature, ct_weight)` + `EvalAdd` | Private features and private weights |
+| 4 | `polynomial_activation` | `EvalPoly` / `EvalChebyshevFunction` | Approximate sigmoid/tanh/ReLU-like activation |
+| 5 | `tiny_linear_layer` | rotations + weighted sums | Small neural-network linear layer |
+
+Start with `linear_score_plain_weights`. It is close to real inference but does
+not drag in encrypted comparison, argmax, or branching.
+
+### OpenFHE APIs To Reuse
+
+| OpenFHE API / example | Use in this project |
+| --- | --- |
+| `EvalLinearWSum` / `linearwsum-evaluation.cpp` | Weighted sum over encrypted values with public weights. |
+| `EvalInnerProduct` / `inner-product.cpp` | Dot product style benchmark. |
+| `EvalMult(ct, plaintext)` | Public model weights, encrypted features. |
+| `EvalMult(ct1, ct2)` | Private model weights or product features. |
+| `EvalSum` | Reduce packed slots after multiply. |
+| `EvalRotate` / `rotation.cpp` | Packing/layout experiments for matrix-vector style workloads. |
+| `EvalPoly` / `polynomial-evaluation.cpp` | Polynomial activations. |
+| `EvalChebyshevFunction` / `function-evaluation.cpp` | Smooth function approximations such as logistic-like activation. |
+
+### Recommended Helper Layer
+
+Keep the helper thin. It should wrap OpenFHE operator patterns, not become an
+ML framework.
+
+| Helper | Responsibility |
+| --- | --- |
+| `CkksContextFactory` | Build CKKS context from security, depth, ring, scale, and batch settings. |
+| `CkksPackedVector` | Pack numeric columns into plaintext/ciphertext chunks. |
+| `CkksLinearOps` | Linear weighted sum, dot product, and batched score operators. |
+| `CkksPolynomialOps` | Polynomial and Chebyshev function evaluation. |
+| `CkksLayoutPlanner` | Record slots, chunks, rotations, and packing strategy. |
+| `CkksMetrics` | Timing, accuracy, slot utilization, and parameter reporting. |
+
+### Metrics
 
 ```text
 prediction_time
@@ -270,6 +343,28 @@ classification_accuracy_difference
 ciphertext_size
 memory_usage
 ```
+
+For the first implementation, report the same timing columns as the aggregation
+benchmarks:
+
+```text
+plain_time_ms
+encode_time_ms
+encrypt_time_ms
+he_eval_time_ms
+decrypt_time_ms
+decode_time_ms
+total_he_time_ms
+operation_slowdown
+end_to_end_slowdown
+absolute_error
+relative_error
+```
+
+Accuracy should compare the decrypted HE score against the plain C++ score.
+Classification accuracy can be computed after decrypt for reporting, but it is
+not part of the encrypted benchmark until we intentionally revisit encrypted
+comparison.
 
 ## OpenFHE Scheme Plan
 
@@ -543,6 +638,44 @@ Start with:
 3. Visible-key join with encrypted values.
 4. Encrypted-key equality join only if the earlier levels justify it.
 ```
+
+### Experiment 6: Tiny Encrypted-Key Lookup / Join
+
+Use `scripts/generate_tiny_crypto_query_data.py` for this, not the normal
+transaction generator.
+
+Start with tiny data only:
+
+```text
+16 transactions
+16 customer keys
+```
+
+Test two representations:
+
+| Representation | What it tests |
+| --- | --- |
+| Scalar encrypted key | Direct encrypted equality feasibility. |
+| One-hot encrypted key | HE-friendly lookup as a dot product / masked selection. |
+
+Possible query primitives:
+
+```text
+encrypted_eq_customer_id
+encrypted_lookup_onehot_risk_weight
+encrypted_join_tiny_equality_mask
+encrypted_join_tiny_onehot
+encrypted_compare_amount_gt_threshold
+```
+
+This is deliberately separate from the 1k/10k/100k performance datasets because
+naive fully encrypted joins can scale as:
+
+```text
+transactions_rows * customers_rows
+```
+
+The first goal is correctness and usability, not speed.
 
 ## What To Avoid At The Start
 

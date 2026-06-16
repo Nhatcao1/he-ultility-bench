@@ -33,7 +33,9 @@ inline std::vector<std::string> split_csv_line(const std::string& line) {
     return fields;
 }
 
-inline Transactions load_transactions_csv(const std::string& path) {
+inline Transactions load_transactions_csv(
+    const std::string& path,
+    std::size_t max_rows = 0) {
     std::ifstream input(path);
     if (!input) {
         throw std::runtime_error("failed to open transactions CSV: " + path);
@@ -64,6 +66,10 @@ inline Transactions load_transactions_csv(const std::string& path) {
         // Columns follow TRANSACTION_HEADER in scripts/generate_benchmark_data.py.
         data.customer_id.push_back(static_cast<std::size_t>(std::stoull(fields[1])));
         data.amount.push_back(std::stod(fields[10]));
+
+        if (max_rows != 0 && data.size() >= max_rows) {
+            break;
+        }
     }
 
     if (data.size() == 0) {

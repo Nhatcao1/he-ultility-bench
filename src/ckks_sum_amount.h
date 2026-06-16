@@ -46,6 +46,10 @@ inline std::size_t nonzero_or_default(std::size_t value, std::size_t fallback) {
     return value == 0 ? fallback : value;
 }
 
+inline bool is_power_of_two(std::size_t value) {
+    return value != 0 && (value & (value - 1)) == 0;
+}
+
 inline std::size_t configure_openfhe_threads(std::size_t requested_threads) {
 #ifdef _OPENMP
     omp_set_num_threads(static_cast<int>(requested_threads));
@@ -305,6 +309,10 @@ inline BenchmarkResult openfhe_ckks_select_amount_gt_5000(
     // example uses sparse 16-slot comparison; keep that as the safe default
     // unless the caller explicitly requests a larger batch size.
     const std::size_t comparison_slots = nonzero_or_default(config.batch_size, 16);
+    if (!is_power_of_two(comparison_slots)) {
+        throw std::runtime_error(
+            "select_amount_gt_5000 requires --ckks-batch-size to be 0 or a power of two");
+    }
     const std::size_t comparison_depth = std::max<std::size_t>(config.multiplicative_depth, 17);
     const uint32_t log_q_lwe = 25;
     const double threshold = 5000.0;
@@ -373,18 +381,22 @@ inline BenchmarkResult openfhe_ckks_select_amount_gt_5000(
         const std::size_t used_slots = std::min(comparison_slots, data.size() - offset);
         std::vector<double> packed_amount;
         std::vector<double> packed_threshold;
-        packed_amount.reserve(used_slots);
-        packed_threshold.reserve(used_slots);
+        packed_amount.reserve(comparison_slots);
+        packed_threshold.reserve(comparison_slots);
         for (std::size_t i = 0; i < used_slots; ++i) {
             packed_amount.push_back(data.amount[offset + i]);
+            packed_threshold.push_back(threshold);
+        }
+        for (std::size_t i = used_slots; i < comparison_slots; ++i) {
+            packed_amount.push_back(0.0);
             packed_threshold.push_back(threshold);
         }
 
         const Timer encode_timer;
         Plaintext amount_plaintext = cc->MakeCKKSPackedPlaintext(
-            packed_amount, 1, 0, nullptr, static_cast<uint32_t>(used_slots));
+            packed_amount, 1, 0, nullptr, static_cast<uint32_t>(comparison_slots));
         Plaintext threshold_plaintext = cc->MakeCKKSPackedPlaintext(
-            packed_threshold, 1, 0, nullptr, static_cast<uint32_t>(used_slots));
+            packed_threshold, 1, 0, nullptr, static_cast<uint32_t>(comparison_slots));
         encode_time_ms += encode_timer.elapsed_ms();
 
         const Timer encrypt_timer;
@@ -397,7 +409,7 @@ inline BenchmarkResult openfhe_ckks_select_amount_gt_5000(
             threshold_ciphertext,
             amount_ciphertext,
             static_cast<uint32_t>(used_slots),
-            static_cast<uint32_t>(used_slots),
+            static_cast<uint32_t>(comparison_slots),
             p_lwe,
             scale_sign_fhew);
         auto selected_amount = cc->EvalMult(amount_ciphertext, comparison_mask);

@@ -34,6 +34,7 @@ struct CliArgs {
     std::vector<std::string> benches = {"sum_amount"};
     std::vector<std::size_t> thread_counts = {1, 4, 8};
     BackendMode backend = BackendMode::PlainCpp;
+    std::size_t max_rows = 0;
     std::size_t ckks_ring_dim = 0;
     std::size_t ckks_batch_size = 0;
     std::size_t ckks_depth = 1;
@@ -55,7 +56,7 @@ void print_usage(const char* program) {
         << "[--customers customers.csv] "
         << "[--bench all_agg|benchmark_name] "
         << "[--backend plain_cpp|openfhe_ckks|all] "
-        << "[--threads 1 4 8] "
+        << "[--threads 1 4 8] [--max-rows 10] "
         << "[--ckks-ring-dim 8192] [--ckks-batch-size 4096] "
         << "[--ckks-depth 1] [--ckks-scale-bits 50] [--ckks-first-mod-bits 60] "
         << "[--results results/benchmark_results.csv] "
@@ -144,6 +145,14 @@ CliArgs parse_args(int argc, char** argv) {
                 throw std::runtime_error("--backend requires plain_cpp, openfhe_ckks, or all");
             }
             args.backend = parse_backend_mode(argv[++i]);
+            continue;
+        }
+
+        if (flag == "--max-rows") {
+            if (i + 1 >= argc) {
+                throw std::runtime_error("--max-rows requires a positive integer or 0");
+            }
+            args.max_rows = static_cast<std::size_t>(std::stoull(argv[++i]));
             continue;
         }
 
@@ -415,10 +424,13 @@ int main(int argc, char** argv) {
 
         std::cout << "Loading transactions: " << args.data_path << '\n';
         const Timer load_timer;
-        Transactions data = load_transactions_csv(args.data_path);
+        Transactions data = load_transactions_csv(args.data_path, args.max_rows);
         const double load_ms = load_timer.elapsed_ms();
         std::cout << "Loaded " << data.size() << " rows in "
                   << load_ms << " ms\n";
+        if (args.max_rows != 0) {
+            std::cout << "Applied --max-rows " << args.max_rows << '\n';
+        }
 
         const auto available_benchmarks = plain_benchmarks();
         const auto selected_benches = expand_benchmarks(
