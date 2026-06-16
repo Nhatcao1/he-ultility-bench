@@ -74,12 +74,33 @@ rm -f results/benchmark_results.csv
   --bench sum_amount \
   --backend all \
   --threads 1 4 8 \
-  --ckks-ring-dim 8192 \
+  --ckks-ring-dim 16384 \
   --ckks-depth 1 \
   --ckks-scale-bits 50 \
   --ckks-first-mod-bits 60 \
   --results results/benchmark_results.csv
 ```
+
+Weighted aggregate, using `customer_id -> risk_weight` from `customers.csv`:
+
+```bash
+rm -f results/benchmark_results_weighted_sum.csv
+./build/utility_bench \
+  --data data/generated/medium_100k/transactions.csv \
+  --bench weighted_sum_amount_risk \
+  --backend all \
+  --threads 1 4 8 \
+  --ckks-ring-dim 16384 \
+  --ckks-depth 1 \
+  --ckks-scale-bits 50 \
+  --ckks-first-mod-bits 60 \
+  --results results/benchmark_results_weighted_sum.csv
+```
+
+The weighted benchmark automatically reads `customers.csv` from the same
+dataset folder. Use `--customers path/to/customers.csv` to override it.
+Use `--bench all_agg` to run both `sum_amount` and
+`weighted_sum_amount_risk`.
 
 Default backend is `plain_cpp`, and the default benchmark is `sum_amount`:
 
@@ -107,13 +128,17 @@ To also save computed operation outputs for inspection:
   --output-dir results/outputs/tiny_1k
 ```
 
-The benchmark measures compute-only timing for:
+The benchmark measures compute-only timing for operations such as:
 
 ```text
 SELECT SUM(amount) FROM transactions;
+SELECT SUM(amount * risk_weight) FROM prepared_transactions;
 ```
 
 CSV loading time is printed separately and is not included in the compute timing.
+For weighted aggregation, customer lookup expansion is also printed separately
+and excluded from compute timing. The first CKKS weighted version encrypts
+`amount` and keeps `risk_weight` as a packed plaintext multiplier.
 Output file writing is also excluded from compute timing.
 Plain C++ is always measured once as a single-thread baseline. OpenFHE CKKS is
 run once per requested thread count and compared back to that same single-thread
@@ -125,9 +150,9 @@ evaluation, decrypt, and decode. OpenFHE context/key generation is recorded as
 CKKS uses 128-bit security in this first version. Tunable parameters:
 
 ```text
---ckks-ring-dim 0          0 lets OpenFHE choose; 8192 forces ring dimension.
+--ckks-ring-dim 0          0 lets OpenFHE choose; 16384 is a tested 128-bit default here.
 --ckks-batch-size 0        0 uses all slots, normally ring_dim / 2.
---ckks-depth 1             Addition aggregation only needs shallow depth.
+--ckks-depth 1             Sum and one multiply-then-sum both fit this first benchmark.
 --ckks-scale-bits 50       CKKS scaling modulus size.
 --ckks-first-mod-bits 60   CKKS first modulus size.
 ```
@@ -144,7 +169,11 @@ Saved output files use this shape:
 ```text
 results/outputs/tiny_1k/
   plain_sum_amount_threads_1.txt
+  plain_weighted_sum_amount_risk_threads_1.txt
   openfhe_ckks_sum_amount_threads_1.txt
   openfhe_ckks_sum_amount_threads_4.txt
   openfhe_ckks_sum_amount_threads_8.txt
+  openfhe_ckks_weighted_sum_amount_risk_threads_1.txt
+  openfhe_ckks_weighted_sum_amount_risk_threads_4.txt
+  openfhe_ckks_weighted_sum_amount_risk_threads_8.txt
 ```

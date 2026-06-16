@@ -29,8 +29,9 @@ enum class BackendMode {
 
 struct CliArgs {
     std::string data_path = "data/generated/tiny_1k/transactions.csv";
+    std::string customers_path;
     std::filesystem::path results_path = "results/benchmark_results.csv";
-    std::vector<std::string> benches = {"all_agg"};
+    std::vector<std::string> benches = {"sum_amount"};
     std::vector<std::size_t> thread_counts = {1, 4, 8};
     BackendMode backend = BackendMode::PlainCpp;
     std::size_t ckks_ring_dim = 0;
@@ -51,6 +52,7 @@ struct BenchmarkDefinition {
 void print_usage(const char* program) {
     std::cerr
         << "Usage: " << program << " [--data transactions.csv] "
+        << "[--customers customers.csv] "
         << "[--bench all_agg|benchmark_name] "
         << "[--backend plain_cpp|openfhe_ckks|all] "
         << "[--threads 1 4 8] "
@@ -61,7 +63,8 @@ void print_usage(const char* program) {
         << "Runs aggregation benchmarks for plaintext C++ and optionally "
         << "OpenFHE CKKS EvalSum/rotation.\n\n"
         << "Available aggregation benchmarks:\n"
-        << "  sum_amount\n\n"
+        << "  sum_amount\n"
+        << "  weighted_sum_amount_risk\n\n"
         << "Default backend: plain_cpp.\n"
         << "Default OpenFHE thread counts: 1 4 8.\n";
 }
@@ -107,6 +110,14 @@ CliArgs parse_args(int argc, char** argv) {
             continue;
         }
 
+        if (flag == "--customers") {
+            if (i + 1 >= argc) {
+                throw std::runtime_error("--customers requires a path");
+            }
+            args.customers_path = argv[++i];
+            continue;
+        }
+
         if (flag == "--results") {
             if (i + 1 >= argc) {
                 throw std::runtime_error("--results requires a path");
@@ -120,7 +131,7 @@ CliArgs parse_args(int argc, char** argv) {
                 throw std::runtime_error("--bench requires a benchmark name");
             }
             const std::string bench = argv[++i];
-            if (args.benches.size() == 1 && args.benches[0] == "all_agg") {
+            if (args.benches.size() == 1 && args.benches[0] == "sum_amount") {
                 args.benches.clear();
             }
             args.benches.push_back(bench);
@@ -274,6 +285,7 @@ std::map<std::string, BenchmarkDefinition> plain_benchmarks() {
 
     for (const auto& benchmark : {
              make_scalar_benchmark("sum_amount", plaintext_sum_amount),
+             make_scalar_benchmark("weighted_sum_amount_risk", plaintext_weighted_sum_amount_risk),
          }) {
         benchmarks.emplace(benchmark.name, benchmark);
     }
@@ -315,14 +327,33 @@ std::vector<std::string> expand_benchmarks(
     return expanded;
 }
 
+bool benchmark_needs_customers(const std::string& benchmark_name) {
+    return benchmark_name == "weighted_sum_amount_risk";
+}
+
+bool any_benchmark_needs_customers(const std::vector<std::string>& benchmark_names) {
+    for (const std::string& benchmark_name : benchmark_names) {
+        if (benchmark_needs_customers(benchmark_name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string default_customers_path_for_data(const std::string& data_path) {
+    const std::filesystem::path transactions_path(data_path);
+    return (transactions_path.parent_path() / "customers.csv").string();
+}
+
 BenchmarkResult run_openfhe_ckks_benchmark(
     const Transactions& data,
     const std::string& operation,
     std::size_t thread_count,
     const BenchmarkResult& baseline,
     const CliArgs& args) {
-    if (operation != "sum_amount") {
-        throw std::runtime_error("OpenFHE CKKS backend currently supports only sum_amount");
+    if (operation != "sum_amount" && operation != "weighted_sum_amount_risk") {
+        throw std::runtime_error(
+            "OpenFHE CKKS backend currently supports sum_amount and weighted_sum_amount_risk");
     }
 
 #ifdef UTILITY_BENCH_WITH_OPENFHE
@@ -332,7 +363,16 @@ BenchmarkResult run_openfhe_ckks_benchmark(
     config.multiplicative_depth = args.ckks_depth;
     config.scaling_mod_size = args.ckks_scaling_mod_size;
     config.first_mod_size = args.ckks_first_mod_size;
-    return openfhe_ckks_sum_amount(
+    if (operation == "sum_amount") {
+        return openfhe_ckks_sum_amount(
+            data,
+            thread_count,
+            baseline.baseline_value,
+            baseline.plain_time_ms,
+            config);
+    }
+
+    return openfhe_ckks_weighted_sum_amount_risk(
         data,
         thread_count,
         baseline.baseline_value,
@@ -357,7 +397,7 @@ int main(int argc, char** argv) {
 
         std::cout << "Loading transactions: " << args.data_path << '\n';
         const Timer load_timer;
-        const Transactions data = load_transactions_csv(args.data_path);
+        Transactions data = load_transactions_csv(args.data_path);
         const double load_ms = load_timer.elapsed_ms();
         std::cout << "Loaded " << data.size() << " rows in "
                   << load_ms << " ms\n";
@@ -366,6 +406,18 @@ int main(int argc, char** argv) {
         const auto selected_benches = expand_benchmarks(
             args.benches,
             available_benchmarks);
+
+        if (any_benchmark_needs_customers(selected_benches)) {
+            const std::string customers_path = args.customers_path.empty()
+                ? default_customers_path_for_data(args.data_path)
+                : args.customers_path;
+            std::cout << "Loading customers: " << customers_path << '\n';
+            const Timer customer_load_timer;
+            const auto customer_risk_weights = load_customer_risk_weights_csv(customers_path);
+            attach_customer_risk_weights(data, customer_risk_weights);
+            std::cout << "Attached risk weights in "
+                      << customer_load_timer.elapsed_ms() << " ms\n";
+        }
 
         for (const std::string& bench_name : selected_benches) {
             const BenchmarkDefinition& benchmark = available_benchmarks.at(bench_name);

@@ -66,6 +66,9 @@ inline std::size_t configure_openfhe_threads(std::size_t requested_threads) {
 
 inline BenchmarkResult openfhe_ckks_sum_amount(
     const Transactions& data,
+    const std::string& operation,
+    const std::vector<double>& values,
+    const std::vector<double>* plaintext_multiplier,
     std::size_t thread_count,
     double baseline_value,
     double plain_time_ms,
@@ -82,6 +85,13 @@ inline BenchmarkResult openfhe_ckks_sum_amount(
     using lbcrypto::LEVELEDSHE;
     using lbcrypto::PKE;
     using lbcrypto::Plaintext;
+
+    if (values.size() != data.size()) {
+        throw std::runtime_error("CKKS aggregate input vector size does not match row count");
+    }
+    if (plaintext_multiplier != nullptr && plaintext_multiplier->size() != data.size()) {
+        throw std::runtime_error("CKKS plaintext multiplier vector size does not match row count");
+    }
 
     const std::size_t openfhe_threads = configure_openfhe_threads(thread_count);
 
@@ -137,11 +147,20 @@ inline BenchmarkResult openfhe_ckks_sum_amount(
         std::vector<double> packed_values;
         packed_values.reserve(used_slots);
         for (std::size_t i = 0; i < used_slots; ++i) {
-            packed_values.push_back(data.amount[offset + i]);
+            packed_values.push_back(values[offset + i]);
         }
 
         const Timer encode_timer;
         Plaintext plaintext = cc->MakeCKKSPackedPlaintext(packed_values);
+        Plaintext multiplier_plaintext;
+        if (plaintext_multiplier != nullptr) {
+            std::vector<double> packed_multiplier;
+            packed_multiplier.reserve(used_slots);
+            for (std::size_t i = 0; i < used_slots; ++i) {
+                packed_multiplier.push_back((*plaintext_multiplier)[offset + i]);
+            }
+            multiplier_plaintext = cc->MakeCKKSPackedPlaintext(packed_multiplier);
+        }
         encode_time_ms += encode_timer.elapsed_ms();
 
         const Timer encrypt_timer;
@@ -149,7 +168,11 @@ inline BenchmarkResult openfhe_ckks_sum_amount(
         encrypt_time_ms += encrypt_timer.elapsed_ms();
 
         const Timer eval_timer;
-        auto chunk_sum = cc->EvalSum(ciphertext, static_cast<uint32_t>(used_slots));
+        auto eval_input = ciphertext;
+        if (plaintext_multiplier != nullptr) {
+            eval_input = cc->EvalMult(ciphertext, multiplier_plaintext);
+        }
+        auto chunk_sum = cc->EvalSum(eval_input, static_cast<uint32_t>(used_slots));
         rotation_count_estimate += ceil_log2(used_slots);
         if (has_total) {
             total_ciphertext = cc->EvalAdd(total_ciphertext, chunk_sum);
@@ -180,7 +203,7 @@ inline BenchmarkResult openfhe_ckks_sum_amount(
     const double relative_error = divide_or_zero(absolute_error, std::abs(baseline_value));
 
     BenchmarkResult result;
-    result.operation = "sum_amount";
+    result.operation = operation;
     result.backend = "openfhe_ckks";
     result.rows = data.size();
     result.threads = openfhe_threads;
@@ -212,11 +235,54 @@ inline BenchmarkResult openfhe_ckks_sum_amount(
     result.rotation_count_estimate = rotation_count_estimate;
     result.notes =
 #ifdef _OPENMP
-        "compute_only_no_io;plain_time_reused_from_same_run_baseline;omp_set_num_threads;setup_recorded_separately;encrypt_decrypt_in_total";
+        plaintext_multiplier == nullptr
+            ? "compute_only_no_io;plain_time_reused_from_same_run_baseline;omp_set_num_threads;setup_recorded_separately;encrypt_decrypt_in_total"
+            : "compute_only_no_io;plaintext_lookup_weight_preexpanded;ciphertext_plaintext_mult;plain_time_reused_from_same_run_baseline;omp_set_num_threads;setup_recorded_separately;encrypt_decrypt_in_total";
 #else
-        "compute_only_no_io;plain_time_reused_from_same_run_baseline;openmp_not_seen_by_runner;setup_recorded_separately;encrypt_decrypt_in_total";
+        plaintext_multiplier == nullptr
+            ? "compute_only_no_io;plain_time_reused_from_same_run_baseline;openmp_not_seen_by_runner;setup_recorded_separately;encrypt_decrypt_in_total"
+            : "compute_only_no_io;plaintext_lookup_weight_preexpanded;ciphertext_plaintext_mult;plain_time_reused_from_same_run_baseline;openmp_not_seen_by_runner;setup_recorded_separately;encrypt_decrypt_in_total";
 #endif
     return result;
+}
+
+inline BenchmarkResult openfhe_ckks_sum_amount(
+    const Transactions& data,
+    std::size_t thread_count,
+    double baseline_value,
+    double plain_time_ms,
+    const CkksSumConfig& config = CkksSumConfig{}) {
+    return openfhe_ckks_sum_amount(
+        data,
+        "sum_amount",
+        data.amount,
+        nullptr,
+        thread_count,
+        baseline_value,
+        plain_time_ms,
+        config);
+}
+
+inline BenchmarkResult openfhe_ckks_weighted_sum_amount_risk(
+    const Transactions& data,
+    std::size_t thread_count,
+    double baseline_value,
+    double plain_time_ms,
+    const CkksSumConfig& config = CkksSumConfig{}) {
+    if (data.risk_weight_by_row.size() != data.size()) {
+        throw std::runtime_error(
+            "risk_weight_by_row is missing; load customers.csv before weighted CKKS benchmarks");
+    }
+
+    return openfhe_ckks_sum_amount(
+        data,
+        "weighted_sum_amount_risk",
+        data.amount,
+        &data.risk_weight_by_row,
+        thread_count,
+        baseline_value,
+        plain_time_ms,
+        config);
 }
 
 #endif  // UTILITY_BENCH_WITH_OPENFHE

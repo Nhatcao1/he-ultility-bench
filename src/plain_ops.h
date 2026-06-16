@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
@@ -70,5 +71,21 @@ inline double parallel_sum(
 inline double plaintext_sum_amount(const Transactions& data, std::size_t thread_count) {
     return parallel_sum(data.size(), thread_count, [&](std::size_t i) {
         return data.amount[i];
+    });
+}
+
+// Plain C++ baseline for:
+//   SELECT SUM(amount * risk_weight)
+// after customer_id -> risk_weight lookup has been expanded into a vector.
+inline double plaintext_weighted_sum_amount_risk(
+    const Transactions& data,
+    std::size_t thread_count) {
+    if (data.risk_weight_by_row.size() != data.size()) {
+        throw std::runtime_error(
+            "risk_weight_by_row is missing; load customers.csv before weighted benchmarks");
+    }
+
+    return parallel_sum(data.size(), thread_count, [&](std::size_t i) {
+        return data.amount[i] * data.risk_weight_by_row[i];
     });
 }
