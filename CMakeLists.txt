@@ -25,7 +25,10 @@ if(UTILITY_BENCH_WITH_OPENFHE)
     target_compile_definitions(utility_bench PRIVATE UTILITY_BENCH_WITH_OPENFHE=1)
 
     target_compile_options(utility_bench PRIVATE ${OPENFHE_CXX_FLAGS_LIST})
-    target_include_directories(utility_bench PRIVATE
+    # OpenFHE headers intentionally use compiler extensions such as __int128.
+    # Mark them as SYSTEM so our local warning policy does not turn third-party
+    # header warnings into build failures.
+    target_include_directories(utility_bench SYSTEM PRIVATE
         ${OPENMP_INCLUDES}
         ${OpenFHE_INCLUDE}
         ${OpenFHE_INCLUDE}/third-party/include
