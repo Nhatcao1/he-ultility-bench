@@ -303,9 +303,13 @@ std::vector<std::string> expand_benchmarks(
 
     for (const std::string& name : requested) {
         if (name == "all_agg") {
-            for (const auto& entry : available) {
-                if (seen.insert(entry.first).second) {
-                    expanded.push_back(entry.first);
+            for (const std::string& aggregate_name : {
+                     std::string("sum_amount"),
+                     std::string("weighted_sum_amount_risk"),
+                 }) {
+                if (available.find(aggregate_name) != available.end() &&
+                    seen.insert(aggregate_name).second) {
+                    expanded.push_back(aggregate_name);
                 }
             }
             continue;
@@ -353,15 +357,12 @@ BenchmarkResult run_openfhe_ckks_benchmark(
     std::size_t thread_count,
     const BenchmarkResult& baseline,
     const CliArgs& args) {
-    if (operation == "select_amount_gt_5000") {
+    if (operation != "sum_amount" &&
+        operation != "weighted_sum_amount_risk" &&
+        operation != "select_amount_gt_5000") {
         throw std::runtime_error(
-            "OpenFHE CKKS encrypted WHERE amount > 5000 is not implemented yet; "
-            "run --backend plain_cpp for the C++ predicate baseline");
-    }
-
-    if (operation != "sum_amount" && operation != "weighted_sum_amount_risk") {
-        throw std::runtime_error(
-            "OpenFHE CKKS backend currently supports sum_amount and weighted_sum_amount_risk");
+            "OpenFHE CKKS backend currently supports sum_amount, "
+            "weighted_sum_amount_risk, and select_amount_gt_5000");
     }
 
 #ifdef UTILITY_BENCH_WITH_OPENFHE
@@ -373,6 +374,15 @@ BenchmarkResult run_openfhe_ckks_benchmark(
     config.first_mod_size = args.ckks_first_mod_size;
     if (operation == "sum_amount") {
         return openfhe_ckks_sum_amount(
+            data,
+            thread_count,
+            baseline.baseline_value,
+            baseline.plain_time_ms,
+            config);
+    }
+
+    if (operation == "select_amount_gt_5000") {
+        return openfhe_ckks_select_amount_gt_5000(
             data,
             thread_count,
             baseline.baseline_value,

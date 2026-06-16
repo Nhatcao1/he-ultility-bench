@@ -99,17 +99,24 @@ rm -f results/benchmark_results_weighted_sum.csv
 
 The weighted benchmark automatically reads `customers.csv` from the same
 dataset folder. Use `--customers path/to/customers.csv` to override it.
-Use `--bench all_agg` to run both `sum_amount` and
-`weighted_sum_amount_risk`.
+Use `--bench all_agg` to run both aggregate benchmarks, `sum_amount` and
+`weighted_sum_amount_risk`. `all_agg` does not include encrypted comparison
+benchmarks.
 
-Plain C++ baseline for a real `WHERE amount > 5000` predicate:
+OpenFHE encrypted comparison for a real `WHERE amount > 5000` predicate:
 
 ```bash
 ./build/utility_bench \
-  --data data/generated/medium_100k/transactions.csv \
+  --data data/generated/tiny_1k/transactions.csv \
   --bench select_amount_gt_5000 \
-  --backend plain_cpp \
-  --results results/benchmark_results_select_amount_gt_5000.csv
+  --backend all \
+  --threads 1 4 8 \
+  --ckks-ring-dim 0 \
+  --ckks-batch-size 16 \
+  --ckks-depth 17 \
+  --ckks-scale-bits 50 \
+  --ckks-first-mod-bits 60 \
+  --results results/benchmark_results_select_amount_gt_5000_tiny.csv
 ```
 
 This benchmark represents:
@@ -121,9 +128,15 @@ WHERE amount > 5000;
 ```
 
 Because the result CSV stores scalar values, `result_value` is the checksum /
-sum of the selected output vector. The OpenFHE encrypted predicate version is
-not implemented yet; it will need CKKS polynomial comparison or OpenFHE scheme
-switching rather than a precomputed mask.
+sum of the selected output vector. The OpenFHE version uses CKKS-to-FHEW scheme
+switching via OpenFHE comparison APIs, not a precomputed mask.
+
+Start with `tiny_1k` or `small_10k` for this benchmark, then scale up only
+after correctness and memory use look sane. OpenFHE's scheme
+switching docs note large memory use for many slots because of the linear
+transforms, and the performance docs note that CKKS/FHEW scheme switching uses
+higher-level OpenMP parallelization. Keep `--ckks-batch-size` small at first
+and sweep `--threads 1 4 8`.
 
 Default backend is `plain_cpp`, and the default benchmark is `sum_amount`:
 
@@ -156,6 +169,7 @@ The benchmark measures compute-only timing for operations such as:
 ```text
 SELECT SUM(amount) FROM transactions;
 SELECT SUM(amount * risk_weight) FROM prepared_transactions;
+SELECT amount FROM transactions WHERE amount > 5000;
 ```
 
 CSV loading time is printed separately and is not included in the compute timing.

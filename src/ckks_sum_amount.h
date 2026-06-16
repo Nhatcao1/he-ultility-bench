@@ -7,6 +7,7 @@
 #include "result_writer.h"
 #include "timer.h"
 
+#include "binfhecontext.h"
 #include "openfhe.h"
 
 #ifdef _OPENMP
@@ -39,6 +40,10 @@ inline std::size_t ceil_div(std::size_t numerator, std::size_t denominator) {
 
 inline double divide_or_zero(double numerator, double denominator) {
     return denominator == 0.0 ? 0.0 : numerator / denominator;
+}
+
+inline std::size_t nonzero_or_default(std::size_t value, std::size_t fallback) {
+    return value == 0 ? fallback : value;
 }
 
 inline std::size_t configure_openfhe_threads(std::size_t requested_threads) {
@@ -267,6 +272,195 @@ inline BenchmarkResult openfhe_ckks_weighted_sum_amount_risk(
         baseline_value,
         plain_time_ms,
         config);
+}
+
+inline BenchmarkResult openfhe_ckks_select_amount_gt_5000(
+    const Transactions& data,
+    std::size_t thread_count,
+    double baseline_value,
+    double plain_time_ms,
+    const CkksSumConfig& config = CkksSumConfig{}) {
+    using lbcrypto::ADVANCEDSHE;
+    using lbcrypto::CCParams;
+    using lbcrypto::Ciphertext;
+    using lbcrypto::CryptoContext;
+    using lbcrypto::CryptoContextCKKSRNS;
+    using lbcrypto::DCRTPoly;
+    using lbcrypto::FLEXIBLEAUTO;
+    using lbcrypto::GenCryptoContext;
+    using lbcrypto::HEStd_128_classic;
+    using lbcrypto::HYBRID;
+    using lbcrypto::KEYSWITCH;
+    using lbcrypto::LEVELEDSHE;
+    using lbcrypto::PKE;
+    using lbcrypto::Plaintext;
+    using lbcrypto::SCHEMESWITCH;
+    using lbcrypto::SchSwchParams;
+    using lbcrypto::STD128;
+    using lbcrypto::UNIFORM_TERNARY;
+
+    const std::size_t openfhe_threads = configure_openfhe_threads(thread_count);
+
+    // Scheme switching is much heavier than plain CKKS EvalSum. OpenFHE's
+    // example uses sparse 16-slot comparison; keep that as the safe default
+    // unless the caller explicitly requests a larger batch size.
+    const std::size_t comparison_slots = nonzero_or_default(config.batch_size, 16);
+    const std::size_t comparison_depth = std::max<std::size_t>(config.multiplicative_depth, 17);
+    const uint32_t log_q_lwe = 25;
+    const double threshold = 5000.0;
+    const double scale_sign_fhew = 1.0;
+
+    const Timer setup_timer;
+    CCParams<CryptoContextCKKSRNS> parameters;
+    parameters.SetMultiplicativeDepth(static_cast<uint32_t>(comparison_depth));
+    parameters.SetScalingModSize(static_cast<uint32_t>(config.scaling_mod_size));
+    parameters.SetFirstModSize(static_cast<uint32_t>(config.first_mod_size));
+    parameters.SetScalingTechnique(FLEXIBLEAUTO);
+    parameters.SetSecurityLevel(HEStd_128_classic);
+    parameters.SetBatchSize(static_cast<uint32_t>(comparison_slots));
+    parameters.SetSecretKeyDist(UNIFORM_TERNARY);
+    parameters.SetKeySwitchTechnique(HYBRID);
+    parameters.SetNumLargeDigits(3);
+    if (config.requested_ring_dimension != 0) {
+        parameters.SetRingDim(static_cast<uint32_t>(config.requested_ring_dimension));
+    }
+
+    CryptoContext<DCRTPoly> cc = GenCryptoContext(parameters);
+    cc->Enable(PKE);
+    cc->Enable(KEYSWITCH);
+    cc->Enable(LEVELEDSHE);
+    cc->Enable(ADVANCEDSHE);
+    cc->Enable(SCHEMESWITCH);
+
+    const auto keys = cc->KeyGen();
+
+    SchSwchParams switch_params;
+    switch_params.SetSecurityLevelCKKS(HEStd_128_classic);
+    switch_params.SetSecurityLevelFHEW(STD128);
+    switch_params.SetCtxtModSizeFHEWLargePrec(log_q_lwe);
+    switch_params.SetNumSlotsCKKS(static_cast<uint32_t>(comparison_slots));
+    switch_params.SetNumValues(static_cast<uint32_t>(comparison_slots));
+
+    auto private_key_fhew = cc->EvalSchemeSwitchingSetup(switch_params);
+    auto cc_lwe = cc->GetBinCCForSchemeSwitch();
+    cc_lwe->BTKeyGen(private_key_fhew);
+    cc->EvalSchemeSwitchingKeyGen(keys, private_key_fhew);
+
+    const uint32_t modulus_lwe = 1U << log_q_lwe;
+    const uint32_t beta = cc_lwe->GetBeta().ConvertToInt();
+    const uint32_t p_lwe = modulus_lwe / (2 * beta);
+    cc->EvalCompareSwitchPrecompute(p_lwe, scale_sign_fhew);
+    const double setup_time_ms = setup_timer.elapsed_ms();
+
+    const std::size_t actual_ring_dimension = cc->GetRingDimension();
+    const std::size_t ciphertext_count = ceil_div(data.size(), comparison_slots);
+    const std::size_t used_slots_last_ciphertext =
+        data.size() - ((ciphertext_count - 1) * comparison_slots);
+    const std::size_t padding_slots_last_ciphertext =
+        comparison_slots - used_slots_last_ciphertext;
+    const double slot_utilization = divide_or_zero(
+        static_cast<double>(data.size()),
+        static_cast<double>(ciphertext_count * comparison_slots));
+
+    double encode_time_ms = 0.0;
+    double encrypt_time_ms = 0.0;
+    double he_eval_time_ms = 0.0;
+    double decrypt_time_ms = 0.0;
+    double decode_time_ms = 0.0;
+    double result_value = 0.0;
+
+    for (std::size_t offset = 0; offset < data.size(); offset += comparison_slots) {
+        const std::size_t used_slots = std::min(comparison_slots, data.size() - offset);
+        std::vector<double> packed_amount;
+        std::vector<double> packed_threshold;
+        packed_amount.reserve(used_slots);
+        packed_threshold.reserve(used_slots);
+        for (std::size_t i = 0; i < used_slots; ++i) {
+            packed_amount.push_back(data.amount[offset + i]);
+            packed_threshold.push_back(threshold);
+        }
+
+        const Timer encode_timer;
+        Plaintext amount_plaintext = cc->MakeCKKSPackedPlaintext(
+            packed_amount, 1, 0, nullptr, static_cast<uint32_t>(used_slots));
+        Plaintext threshold_plaintext = cc->MakeCKKSPackedPlaintext(
+            packed_threshold, 1, 0, nullptr, static_cast<uint32_t>(used_slots));
+        encode_time_ms += encode_timer.elapsed_ms();
+
+        const Timer encrypt_timer;
+        auto amount_ciphertext = cc->Encrypt(keys.publicKey, amount_plaintext);
+        auto threshold_ciphertext = cc->Encrypt(keys.publicKey, threshold_plaintext);
+        encrypt_time_ms += encrypt_timer.elapsed_ms();
+
+        const Timer eval_timer;
+        auto comparison_mask = cc->EvalCompareSchemeSwitching(
+            threshold_ciphertext,
+            amount_ciphertext,
+            static_cast<uint32_t>(used_slots),
+            static_cast<uint32_t>(used_slots),
+            p_lwe,
+            scale_sign_fhew);
+        auto selected_amount = cc->EvalMult(amount_ciphertext, comparison_mask);
+        he_eval_time_ms += eval_timer.elapsed_ms();
+
+        Plaintext selected_plaintext;
+        const Timer decrypt_timer;
+        cc->Decrypt(keys.secretKey, selected_amount, &selected_plaintext);
+        decrypt_time_ms += decrypt_timer.elapsed_ms();
+
+        const Timer decode_timer;
+        selected_plaintext->SetLength(used_slots);
+        const auto selected_values = selected_plaintext->GetRealPackedValue();
+        for (std::size_t i = 0; i < used_slots && i < selected_values.size(); ++i) {
+            result_value += selected_values[i];
+        }
+        decode_time_ms += decode_timer.elapsed_ms();
+    }
+
+    const double total_he_time_ms =
+        encode_time_ms + encrypt_time_ms + he_eval_time_ms + decrypt_time_ms + decode_time_ms;
+    const double absolute_error = std::abs(result_value - baseline_value);
+    const double relative_error = divide_or_zero(absolute_error, std::abs(baseline_value));
+
+    BenchmarkResult result;
+    result.operation = "select_amount_gt_5000";
+    result.backend = "openfhe_ckks_scheme_switch";
+    result.rows = data.size();
+    result.threads = openfhe_threads;
+    result.plain_time_ms = plain_time_ms;
+    result.setup_time_ms = setup_time_ms;
+    result.encode_time_ms = encode_time_ms;
+    result.encrypt_time_ms = encrypt_time_ms;
+    result.he_eval_time_ms = he_eval_time_ms;
+    result.decrypt_time_ms = decrypt_time_ms;
+    result.decode_time_ms = decode_time_ms;
+    result.total_he_time_ms = total_he_time_ms;
+    result.operation_slowdown = divide_or_zero(he_eval_time_ms, plain_time_ms);
+    result.end_to_end_slowdown = divide_or_zero(total_he_time_ms, plain_time_ms);
+    result.result_value = result_value;
+    result.baseline_value = baseline_value;
+    result.absolute_error = absolute_error;
+    result.relative_error = relative_error;
+    result.ciphertext_count = ciphertext_count;
+    result.slots_per_ciphertext = comparison_slots;
+    result.used_slots_last_ciphertext = used_slots_last_ciphertext;
+    result.padding_slots_last_ciphertext = padding_slots_last_ciphertext;
+    result.slot_utilization = slot_utilization;
+    result.requested_ring_dimension = config.requested_ring_dimension;
+    result.actual_ring_dimension = actual_ring_dimension;
+    result.security_bits = 128;
+    result.multiplicative_depth = comparison_depth;
+    result.scaling_mod_size = config.scaling_mod_size;
+    result.first_mod_size = config.first_mod_size;
+    result.rotation_count_reported = 0;
+    result.notes =
+#ifdef _OPENMP
+        "compute_only_no_io;encrypted_where_amount_gt_5000;ckks_fhew_scheme_switching;comparison_slots_default_16;if_batch_size_unset;omp_set_num_threads;setup_recorded_separately;encrypt_decrypt_in_total";
+#else
+        "compute_only_no_io;encrypted_where_amount_gt_5000;ckks_fhew_scheme_switching;comparison_slots_default_16;if_batch_size_unset;openmp_not_seen_by_runner;setup_recorded_separately;encrypt_decrypt_in_total";
+#endif
+    cc->ClearStaticMapsAndVectors();
+    return result;
 }
 
 #endif  // UTILITY_BENCH_WITH_OPENFHE
