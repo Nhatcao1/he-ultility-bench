@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -70,7 +71,7 @@ inline void append_result_csv(
             << "scaling_mod_size,first_mod_size,rotation_count_estimate,notes\n";
     }
 
-    output << std::fixed << std::setprecision(6)
+    output << std::setprecision(std::numeric_limits<double>::max_digits10)
            << result.operation << ','
            << result.backend << ','
            << result.rows << ','

@@ -67,6 +67,8 @@ inline std::size_t configure_openfhe_threads(std::size_t requested_threads) {
 inline BenchmarkResult openfhe_ckks_sum_amount(
     const Transactions& data,
     std::size_t thread_count,
+    double baseline_value,
+    double plain_time_ms,
     const CkksSumConfig& config = CkksSumConfig{}) {
     using lbcrypto::ADVANCEDSHE;
     using lbcrypto::CCParams;
@@ -82,11 +84,6 @@ inline BenchmarkResult openfhe_ckks_sum_amount(
     using lbcrypto::Plaintext;
 
     const std::size_t openfhe_threads = configure_openfhe_threads(thread_count);
-
-    const std::size_t plain_threads = effective_thread_count(thread_count, data.size());
-    const Timer plain_timer;
-    const double baseline_value = plaintext_sum_amount(data, plain_threads);
-    const double plain_time_ms = plain_timer.elapsed_ms();
 
     const Timer setup_timer;
     CCParams<CryptoContextCKKSRNS> parameters;
@@ -215,9 +212,9 @@ inline BenchmarkResult openfhe_ckks_sum_amount(
     result.rotation_count_estimate = rotation_count_estimate;
     result.notes =
 #ifdef _OPENMP
-        "compute_only_no_io;omp_set_num_threads;setup_recorded_separately;encrypt_decrypt_in_total";
+        "compute_only_no_io;plain_time_reused_from_same_run_baseline;omp_set_num_threads;setup_recorded_separately;encrypt_decrypt_in_total";
 #else
-        "compute_only_no_io;openmp_not_seen_by_runner;setup_recorded_separately;encrypt_decrypt_in_total";
+        "compute_only_no_io;plain_time_reused_from_same_run_baseline;openmp_not_seen_by_runner;setup_recorded_separately;encrypt_decrypt_in_total";
 #endif
     return result;
 }

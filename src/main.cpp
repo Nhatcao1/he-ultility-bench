@@ -238,7 +238,7 @@ BenchmarkResult run_plain_operation(
     result.plain_time_ms = elapsed_ms;
     result.result_value = value;
     result.baseline_value = value;
-    result.notes = "compute_only_no_io;std_thread_baseline";
+    result.notes = "compute_only_no_io;std_thread_baseline;single_run_thread_creation_included";
     return result;
 }
 
@@ -319,6 +319,7 @@ BenchmarkResult run_openfhe_ckks_benchmark(
     const Transactions& data,
     const std::string& operation,
     std::size_t thread_count,
+    const BenchmarkResult& baseline,
     const CliArgs& args) {
     if (operation != "sum_amount") {
         throw std::runtime_error("OpenFHE CKKS backend currently supports only sum_amount");
@@ -331,10 +332,16 @@ BenchmarkResult run_openfhe_ckks_benchmark(
     config.multiplicative_depth = args.ckks_depth;
     config.scaling_mod_size = args.ckks_scaling_mod_size;
     config.first_mod_size = args.ckks_first_mod_size;
-    return openfhe_ckks_sum_amount(data, thread_count, config);
+    return openfhe_ckks_sum_amount(
+        data,
+        thread_count,
+        baseline.baseline_value,
+        baseline.plain_time_ms,
+        config);
 #else
     (void)data;
     (void)thread_count;
+    (void)baseline;
     (void)args;
     throw std::runtime_error(
         "OpenFHE CKKS backend was requested but this binary was built without "
@@ -363,23 +370,24 @@ int main(int argc, char** argv) {
         for (const std::size_t thread_count : args.thread_counts) {
             for (const std::string& bench_name : selected_benches) {
                 const BenchmarkDefinition& benchmark = available_benchmarks.at(bench_name);
+                const BenchmarkResult baseline = benchmark.run(data, thread_count);
+
                 if (wants_plain_cpp(args.backend)) {
-                    const BenchmarkResult result = benchmark.run(data, thread_count);
-                    append_result_csv(args.results_path, result);
+                    append_result_csv(args.results_path, baseline);
 
                     if (args.save_outputs) {
-                        benchmark.save_output(data, result.threads, args.output_dir);
+                        benchmark.save_output(data, baseline.threads, args.output_dir);
                     }
 
-                    std::cout << "Ran " << result.backend << ':' << result.operation
-                              << " threads=" << result.threads
-                              << " in " << result.plain_time_ms << " ms"
-                              << " value=" << result.result_value << '\n';
+                    std::cout << "Ran " << baseline.backend << ':' << baseline.operation
+                              << " threads=" << baseline.threads
+                              << " in " << baseline.plain_time_ms << " ms"
+                              << " value=" << baseline.result_value << '\n';
                 }
 
                 if (wants_openfhe_ckks(args.backend)) {
                     const BenchmarkResult result =
-                        run_openfhe_ckks_benchmark(data, bench_name, thread_count, args);
+                        run_openfhe_ckks_benchmark(data, bench_name, thread_count, baseline, args);
                     append_result_csv(args.results_path, result);
 
                     if (args.save_outputs) {

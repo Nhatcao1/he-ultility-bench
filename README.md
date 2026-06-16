@@ -122,6 +122,11 @@ Each selected benchmark is run once per requested thread count.
 For OpenFHE rows, `total_he_time_ms` includes encode, encrypt, homomorphic
 evaluation, decrypt, and decode. OpenFHE context/key generation is recorded as
 `setup_time_ms` but is kept separate from the online query timing.
+For small row counts such as `100k`, the plain C++ multi-thread rows can be
+slower than the 1-thread row because creating `std::thread` workers costs more
+than summing the vector. Use those rows as an honest baseline for this runner,
+not as proof that aggregation is hard for normal C++. Larger datasets make the
+threading comparison more meaningful.
 
 CKKS uses 128-bit security in this first version. Tunable parameters:
 
