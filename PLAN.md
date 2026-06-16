@@ -83,17 +83,20 @@ Recommended columns:
 
 ## Operations To Benchmark
 
-### Phase 1: Basic Vector Operations
+### Phase 1: Aggregation Kernels
 
-Start here because these operations map naturally to HE.
+Start with aggregation because it maps naturally to database and Spark-style
+workloads, and it shows CKKS SIMD packing behavior clearly.
 
-| Operation | Plain baseline | OpenFHE operation | Scheme |
+| Operation | Plain baseline | OpenFHE operation | What it teaches |
 | --- | --- | --- | --- |
-| Vector addition | `c = a + b` | `EvalAdd(ct_a, ct_b)` | CKKS or BFV/BGV |
-| Vector multiplication | `c = a * b` | `EvalMult(ct_a, ct_b)` | CKKS or BFV/BGV |
-| Scalar multiplication | `c = a * k` | `EvalMult(ct_a, plain_k)` | CKKS or BFV/BGV |
-| Weighted sum | `sum(w_i * x_i)` | packed `EvalMult` + `EvalAdd` | CKKS |
-| Reduction sum | `sum(a)` | rotations + additions | CKKS or BFV/BGV |
+| Sum | `SUM(amount)` | packed `EvalSum` | Addition, rotation, packing efficiency |
+| Weighted sum | `SUM(amount * weight)` | `EvalMult` then `EvalSum` | First multiplication-heavy aggregate |
+| Dot product | `SUM(x_i * w_i)` | `EvalInnerProduct` or `EvalMult` + `EvalSum` | ML inference core |
+| Sum of products | `SUM(x1 * x2)` | ciphertext-ciphertext `EvalMult` + `EvalSum` | Multiplicative depth and rescale cost |
+| Sum of squares | `SUM(x1 * x1)` | ciphertext square + `EvalSum` | Variance/stddev building block |
+| Count via mask | `SUM(mask)` | packed `EvalSum(mask)` | Count/query predicate building block |
+| Masked sum | `SUM(amount * mask)` | `EvalMult` + `EvalSum` | `WHERE` clause style aggregation |
 
 Metrics:
 
@@ -113,6 +116,17 @@ end_to_end_slowdown
 max_error
 ```
 
+Multiplication is the next useful test after additive sum, but we should not
+benchmark toy `x1 * x2` alone as the main story. The useful query form is:
+
+```sql
+SELECT SUM(amount * risk_weight)
+FROM joined_or_lookup_data;
+```
+
+This gives us one multiplication per row plus aggregation, which is closer to
+real analytics and simple ML inference.
+
 ### Phase 2: Query-Like Operations
 
 These are closer to database and Spark workloads.
@@ -124,6 +138,8 @@ These are closer to database and Spark workloads.
 | Count with mask | `COUNT(*) WHERE channel_id = k` | `SUM(mask)` | Easy if mask exists |
 | Sum with mask | `SUM(amount) WHERE channel_id = k` | `SUM(amount * mask)` | Medium |
 | Average with mask | `SUM(amount * mask) / SUM(mask)` | encrypted numerator, count handling required | Medium |
+| Lookup by public key | `amount * lookup_weight[key]` | Build plaintext weight vector, then multiply | Medium |
+| Lookup by private key | Hidden key lookup | Requires equality tests or ORAM-like design | Hard |
 | Range filter | `WHERE amount > t` | encrypted comparison or polynomial approximation | Hard |
 | Group-by | `GROUP BY channel_id` | one mask per group, repeated aggregation | Medium to hard |
 | Sort / order by | `ORDER BY amount` | Usually not HE-friendly | Very hard |
@@ -139,7 +155,41 @@ filtered_value[i] = value[i] * mask[i]
 
 Start with plaintext or precomputed masks. Then benchmark encrypted predicate generation separately.
 
-### Phase 3: Join-Like Operations
+### Phase 3: Lookup Operations
+
+Lookups are common in feature engineering: customer risk weight, product price,
+region coefficient, channel coefficient, and so on.
+
+Benchmark lookup in levels.
+
+| Lookup level | Description | Leakage / practicality | First benchmark? |
+| --- | --- | --- | --- |
+| Level 1: Plain lookup baseline | C++/DuckDB maps `customer_id -> risk_weight` | Plaintext baseline | Yes |
+| Level 2: Pre-expanded plaintext lookup | Create `risk_weight` vector before encryption | Leaks lookup result during preprocessing | Yes |
+| Level 3: Public-key lookup | `customer_id` visible, encrypted value column | Leaks keys/access pattern, practical | Yes |
+| Level 4: Encrypted-key lookup | Keys hidden and matched under HE | Expensive/research-style | No |
+
+Recommended first lookup benchmark:
+
+```sql
+SELECT SUM(t.amount * c.risk_weight)
+FROM transactions t
+JOIN customers c
+    ON t.customer_id = c.customer_id;
+```
+
+HE-friendly first version:
+
+```text
+1. Plain preprocessing creates aligned vectors:
+   amount[i], risk_weight_for_customer[i]
+2. Encrypt amount and optionally risk_weight.
+3. Benchmark SUM(amount * risk_weight).
+```
+
+This makes lookup cost and HE multiplication cost visible separately.
+
+### Phase 4: Join-Like Operations
 
 Joins are common in databases and Spark, but they are difficult under HE because they often reveal access patterns or require many equality checks.
 
@@ -173,6 +223,17 @@ Benchmark encrypted weighted sum / aggregation.
 ```
 
 This separates the HE cost from the database join cost.
+
+Join benchmarks should report two costs separately:
+
+```text
+join_preprocess_time_ms
+he_compute_time_ms
+```
+
+For the first code version, keep join preprocessing outside HE and focus on
+the encrypted post-join aggregate. Later, compare against DuckDB/Spark join
+baselines so we know the normal database cost too.
 
 ## Simple ML Use Case
 
@@ -372,48 +433,80 @@ notes
 | Step | Task | Success condition |
 | ---: | --- | --- |
 | 1 | Generate `tiny_1k.csv` numeric data | Can inspect the file manually. |
-| 2 | Implement plain C++ vector add and weighted sum | Results match NumPy. |
-| 3 | Implement CKKS vector add | Decrypted result close to plaintext result. |
+| 2 | Implement plain C++ `SUM(amount)` baseline | Single-thread result and time recorded. |
+| 3 | Implement CKKS `SUM(amount)` | Decrypted sum close to plaintext result. |
 | 4 | Add timing breakdown | Encode/encrypt/eval/decrypt/decode reported separately. |
-| 5 | Implement CKKS weighted sum / linear inference | Matches synthetic score within acceptable error. |
-| 6 | Add DuckDB baseline for simple SQL queries | Plain SQL timings recorded. |
-| 7 | Implement masked sum with precomputed mask | HE aggregation works for `WHERE category = k`. |
-| 8 | Add group-by via repeated masks | One encrypted aggregation per category. |
-| 9 | Add join benchmarks | Start with pre-joined data, then visible-key join. |
-| 10 | Explore encrypted comparisons | Treat as advanced/research benchmark. |
+| 5 | Implement CKKS weighted sum `SUM(amount * weight)` | Multiplication plus aggregation works. |
+| 6 | Add lookup-expanded weighted sum | `customer_id -> risk_weight` vector prepared and tested. |
+| 7 | Add DuckDB baseline for simple SQL queries | Plain SQL timings recorded. |
+| 8 | Implement masked sum with precomputed mask | HE aggregation works for `WHERE channel_id = k`. |
+| 9 | Add group-by via repeated masks | One encrypted aggregation per category. |
+| 10 | Add join benchmarks | Start with pre-joined data, then visible-key join. |
+| 11 | Explore encrypted comparisons | Treat as advanced/research benchmark. |
 
-## First Three Concrete Experiments
+## First Concrete Experiments
 
-### Experiment 1: Vector Addition
+### Experiment 1: Aggregation Sum
 
-```text
-A + B
+```sql
+SELECT SUM(amount)
+FROM transactions;
 ```
 
 Compare:
 
 ```text
-Plain C++
-NumPy
-OpenFHE CKKS operation-only
-OpenFHE CKKS end-to-end
+Plain C++ single-thread baseline
+OpenFHE CKKS EvalSum operation-only
+OpenFHE CKKS encode + encrypt + EvalSum + decrypt + decode
 ```
 
-### Experiment 2: Linear Score
+### Experiment 2: Weighted Aggregation / Multiplication
 
-```text
-score = 0.30*x1 + 0.20*x2 + 0.10*x3 + i1/50000 + i2/50000
+```sql
+SELECT SUM(amount * risk_weight)
+FROM prepared_transactions;
 ```
 
 Compare:
 
 ```text
-Plain C++
-NumPy
-OpenFHE CKKS encrypted inference
+Plain C++ single-thread baseline
+OpenFHE CKKS ciphertext-plaintext multiplication + EvalSum
+OpenFHE CKKS ciphertext-ciphertext multiplication + EvalSum
 ```
 
-### Experiment 3: Query With WHERE Mask
+This is the first serious multiplication benchmark. It also becomes the core
+building block for lookup, join, and ML scoring.
+
+### Experiment 3: Lookup-Expanded Weighted Sum
+
+```sql
+SELECT SUM(t.amount * c.risk_weight)
+FROM transactions t
+JOIN customers c
+    ON t.customer_id = c.customer_id;
+```
+
+First HE version:
+
+```text
+Plain preprocessing:
+  risk_weight_for_row[i] = customers[customer_id[i]].risk_weight
+
+HE compute:
+  SUM(amount[i] * risk_weight_for_row[i])
+```
+
+Compare:
+
+```text
+Plain C++ lookup + sum
+DuckDB join + sum
+OpenFHE CKKS post-lookup weighted sum
+```
+
+### Experiment 4: Query With WHERE Mask
 
 ```sql
 SELECT SUM(amount)
@@ -429,6 +522,27 @@ result = SUM(amount[i] * mask[i])
 ```
 
 Start with plaintext/precomputed mask. Later test encrypted mask generation.
+
+### Experiment 5: Join Benchmark
+
+```sql
+SELECT
+    t.customer_id,
+    SUM(t.amount * c.risk_weight)
+FROM transactions t
+JOIN customers c
+    ON t.customer_id = c.customer_id
+GROUP BY t.customer_id;
+```
+
+Start with:
+
+```text
+1. DuckDB/C++ plaintext join baseline.
+2. Pre-joined encrypted numeric vectors.
+3. Visible-key join with encrypted values.
+4. Encrypted-key equality join only if the earlier levels justify it.
+```
 
 ## What To Avoid At The Start
 
@@ -469,15 +583,16 @@ Can the workload run offline instead of interactively?
 Create the first benchmark implementation for:
 
 ```text
-CKKS vector addition
-CKKS weighted sum / linear inference
-plain C++ baseline
+CKKS SUM(amount)
+plain C++ single-thread baseline
 CSV result logging
 ```
 
 Then expand to:
 
 ```text
+CKKS SUM(amount * risk_weight)
+lookup-expanded weighted sum
 masked SUM WHERE category = k
 DuckDB baseline
 group-by using repeated masks
