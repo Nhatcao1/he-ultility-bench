@@ -56,6 +56,11 @@ Use this when checking whether the encrypted comparison path works at all.
 `--max-rows` stops the CSV loader after the first N transaction rows, so no
 special dataset file is needed.
 
+The implementation pads partial batches to `--ckks-batch-size` and asks
+OpenFHE to scheme-switch the full padded batch. This is intentional:
+OpenFHE's CKKS/FHEW linear-transform precompute expects power-of-two slot
+shapes. Result decoding still sums only the real input rows.
+
 ```bash
 cd ~/he-ultility-bench
 

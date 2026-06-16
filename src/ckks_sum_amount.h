@@ -408,7 +408,7 @@ inline BenchmarkResult openfhe_ckks_select_amount_gt_5000(
         auto comparison_mask = cc->EvalCompareSchemeSwitching(
             threshold_ciphertext,
             amount_ciphertext,
-            static_cast<uint32_t>(used_slots),
+            static_cast<uint32_t>(comparison_slots),
             static_cast<uint32_t>(comparison_slots),
             p_lwe,
             scale_sign_fhew);
