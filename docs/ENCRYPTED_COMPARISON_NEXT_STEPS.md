@@ -72,8 +72,7 @@ Each chunk does substantially more work than the aggregation benchmarks:
 ```text
 encode amount
 encrypt amount
-encode threshold
-encrypt threshold
+reuse encrypted threshold
 scheme-switch comparison
 decrypt comparison mask
 decode comparison mask
@@ -186,21 +185,28 @@ The static performance notes matter here:
 | Memory | Scheme switching can use large memory for transforms and keys; avoid large slot counts until smaller runs are stable. |
 | Key generation/setup | Setup time is reported separately; online timing is encode/encrypt/eval/decrypt/decode. |
 
+## Implemented Simplification
+
+The comparison-only benchmark now reuses a single encrypted threshold
+ciphertext:
+
+```text
+Enc([5000, 5000, ..., 5000])
+```
+
+That threshold ciphertext is created once before the chunk loop. Each chunk
+only encodes/encrypts the current `amount` vector and compares it against the
+reused encrypted threshold.
+
 ## Next Code Optimizations
 
 These are the next useful implementation changes, in order.
 
 | Priority | Change | Why |
 | ---: | --- | --- |
-| 1 | Reuse the encrypted threshold ciphertext for full chunks | Avoid encrypting `[5000, 5000, ...]` for every chunk. |
-| 2 | Add optional progress logging outside serious timing mode | Avoid silent multi-minute runs while keeping default benchmark timings clean. |
-| 3 | Add a `--max-rows` debug option | Run first N rows from a larger dataset without generating new files. |
-| 4 | Add a comparison batch-size sweep script | Produce `16, 64, 128, 256, 512` result rows consistently. |
-| 5 | Add memory measurement outside hot timing loops | Confirm whether large runs are CPU-bound or memory-bound. |
-
-The first optimization is the most important. Threshold `5000` is public and
-constant for the whole query, so it should not need to be encoded and encrypted
-fresh for every full chunk.
+| 1 | Add optional progress logging outside serious timing mode | Avoid silent multi-minute runs while keeping default benchmark timings clean. |
+| 2 | Add a comparison batch-size sweep script | Produce `16, 64, 128, 256, 512` result rows consistently. |
+| 3 | Add memory measurement outside hot timing loops | Confirm whether large runs are CPU-bound or memory-bound. |
 
 ## What Not To Optimize Yet
 
@@ -208,7 +214,7 @@ Do not spend time on these until tiny and 100k single-thread runs are stable.
 
 | Item | Reason |
 | --- | --- |
-| 1m encrypted comparison | Too expensive before chunking and threshold reuse are understood. |
+| 1m encrypted comparison | Too expensive before chunking, batch size, and memory behavior are understood. |
 | Full thread sweep | It multiplies runtime before we know one path finishes. |
 | Join with encrypted comparison | Adds join complexity on top of the hardest current primitive. |
 | Sorting or top-k | Requires many comparisons and selections; not a near-term benchmark. |

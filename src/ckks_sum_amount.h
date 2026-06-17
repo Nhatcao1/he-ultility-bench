@@ -642,31 +642,34 @@ inline BenchmarkResult openfhe_ckks_compare_amount_gt_5000(
     double decode_time_ms = 0.0;
     double result_value = 0.0;
 
+    const std::vector<double> packed_threshold(comparison_slots, threshold);
+    const Timer threshold_encode_timer;
+    Plaintext threshold_plaintext = cc->MakeCKKSPackedPlaintext(
+        packed_threshold, 1, 0, nullptr, static_cast<uint32_t>(comparison_slots));
+    encode_time_ms += threshold_encode_timer.elapsed_ms();
+
+    const Timer threshold_encrypt_timer;
+    auto threshold_ciphertext = cc->Encrypt(keys.publicKey, threshold_plaintext);
+    encrypt_time_ms += threshold_encrypt_timer.elapsed_ms();
+
     for (std::size_t offset = 0; offset < data.size(); offset += comparison_slots) {
         const std::size_t used_slots = std::min(comparison_slots, data.size() - offset);
         std::vector<double> packed_amount;
-        std::vector<double> packed_threshold;
         packed_amount.reserve(comparison_slots);
-        packed_threshold.reserve(comparison_slots);
         for (std::size_t i = 0; i < used_slots; ++i) {
             packed_amount.push_back(data.amount[offset + i]);
-            packed_threshold.push_back(threshold);
         }
         for (std::size_t i = used_slots; i < comparison_slots; ++i) {
             packed_amount.push_back(0.0);
-            packed_threshold.push_back(threshold);
         }
 
         const Timer encode_timer;
         Plaintext amount_plaintext = cc->MakeCKKSPackedPlaintext(
             packed_amount, 1, 0, nullptr, static_cast<uint32_t>(comparison_slots));
-        Plaintext threshold_plaintext = cc->MakeCKKSPackedPlaintext(
-            packed_threshold, 1, 0, nullptr, static_cast<uint32_t>(comparison_slots));
         encode_time_ms += encode_timer.elapsed_ms();
 
         const Timer encrypt_timer;
         auto amount_ciphertext = cc->Encrypt(keys.publicKey, amount_plaintext);
-        auto threshold_ciphertext = cc->Encrypt(keys.publicKey, threshold_plaintext);
         encrypt_time_ms += encrypt_timer.elapsed_ms();
 
         const Timer eval_timer;
@@ -731,9 +734,9 @@ inline BenchmarkResult openfhe_ckks_compare_amount_gt_5000(
     result.rotation_count_reported = 0;
     result.notes =
 #ifdef _OPENMP
-        "compute_only_no_io;encrypted_comparison_only_amount_gt_5000;ckks_fhew_scheme_switching;no_evalsum;no_mask_apply;no_selected_amount;comparison_slots_default_16;if_batch_size_unset;omp_set_num_threads;setup_recorded_separately;encrypt_decrypt_in_total";
+        "compute_only_no_io;encrypted_comparison_only_amount_gt_5000;ckks_fhew_scheme_switching;encrypted_threshold_reused;no_evalsum;no_mask_apply;no_selected_amount;comparison_slots_default_16;if_batch_size_unset;omp_set_num_threads;setup_recorded_separately;encrypt_decrypt_in_total";
 #else
-        "compute_only_no_io;encrypted_comparison_only_amount_gt_5000;ckks_fhew_scheme_switching;no_evalsum;no_mask_apply;no_selected_amount;comparison_slots_default_16;if_batch_size_unset;openmp_not_seen_by_runner;setup_recorded_separately;encrypt_decrypt_in_total";
+        "compute_only_no_io;encrypted_comparison_only_amount_gt_5000;ckks_fhew_scheme_switching;encrypted_threshold_reused;no_evalsum;no_mask_apply;no_selected_amount;comparison_slots_default_16;if_batch_size_unset;openmp_not_seen_by_runner;setup_recorded_separately;encrypt_decrypt_in_total";
 #endif
     cc->ClearStaticMapsAndVectors();
     return result;
