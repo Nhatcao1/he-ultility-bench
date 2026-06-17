@@ -101,3 +101,46 @@ inline double plaintext_select_amount_gt_5000(
         return data.amount[i] > 5000.0 ? data.amount[i] : 0.0;
     });
 }
+
+// Plain C++ baseline for:
+//   rolling AVG(amount) over a fixed forward row window.
+// The benchmark result is the checksum/SUM of the rolling-average output
+// vector, keeping the CSV schema scalar while still validating all rows.
+inline double plaintext_rolling_avg_amount(
+    const Transactions& data,
+    std::size_t thread_count,
+    std::size_t window_size) {
+    if (window_size == 0) {
+        throw std::runtime_error("rolling average window size must be positive");
+    }
+    if (data.size() < window_size) {
+        return 0.0;
+    }
+
+    const std::size_t output_rows = data.size() - window_size + 1;
+    return parallel_sum(output_rows, thread_count, [&](std::size_t row) {
+        double window_sum = 0.0;
+        for (std::size_t offset = 0; offset < window_size; ++offset) {
+            window_sum += data.amount[row + offset];
+        }
+        return window_sum / static_cast<double>(window_size);
+    });
+}
+
+inline double plaintext_rolling_avg_amount_w3(
+    const Transactions& data,
+    std::size_t thread_count) {
+    return plaintext_rolling_avg_amount(data, thread_count, 3);
+}
+
+inline double plaintext_rolling_avg_amount_w5(
+    const Transactions& data,
+    std::size_t thread_count) {
+    return plaintext_rolling_avg_amount(data, thread_count, 5);
+}
+
+inline double plaintext_rolling_avg_amount_w9(
+    const Transactions& data,
+    std::size_t thread_count) {
+    return plaintext_rolling_avg_amount(data, thread_count, 9);
+}

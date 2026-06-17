@@ -63,7 +63,7 @@ void print_usage(const char* program) {
         << "Usage: " << program << " [--data transactions.csv] "
         << "[--customers customers.csv] "
         << "[--tiny-query-dir data/generated_tiny_crypto_query/join_lookup_16] "
-        << "[--bench all_agg|benchmark_name] "
+        << "[--bench all_agg|all_rolling|benchmark_name] "
         << "[--backend plain_cpp|openfhe_ckks|all] "
         << "[--threads 1 4 8] [--max-rows 10] "
         << "[--ckks-ring-dim 8192] [--ckks-batch-size 4096] "
@@ -76,6 +76,9 @@ void print_usage(const char* program) {
         << "  sum_amount\n"
         << "  weighted_sum_amount_risk\n"
         << "  weighted_sum_amount_risk_encrypted\n"
+        << "  rolling_avg_amount_w3\n"
+        << "  rolling_avg_amount_w5\n"
+        << "  rolling_avg_amount_w9\n"
         << "  select_amount_gt_5000\n"
         << "  tiny_lookup_onehot_risk_weight\n"
         << "  tiny_join_onehot_amount_risk\n\n"
@@ -317,6 +320,9 @@ std::map<std::string, BenchmarkDefinition> plain_benchmarks() {
              make_scalar_benchmark("sum_amount", plaintext_sum_amount),
              make_scalar_benchmark("weighted_sum_amount_risk", plaintext_weighted_sum_amount_risk),
              make_scalar_benchmark("weighted_sum_amount_risk_encrypted", plaintext_weighted_sum_amount_risk),
+             make_scalar_benchmark("rolling_avg_amount_w3", plaintext_rolling_avg_amount_w3),
+             make_scalar_benchmark("rolling_avg_amount_w5", plaintext_rolling_avg_amount_w5),
+             make_scalar_benchmark("rolling_avg_amount_w9", plaintext_rolling_avg_amount_w9),
              make_scalar_benchmark("select_amount_gt_5000", plaintext_select_amount_gt_5000),
          }) {
         benchmarks.emplace(benchmark.name, benchmark);
@@ -393,13 +399,27 @@ std::vector<std::string> expand_benchmarks(
             continue;
         }
 
+        if (name == "all_rolling") {
+            for (const std::string& rolling_name : {
+                     std::string("rolling_avg_amount_w3"),
+                     std::string("rolling_avg_amount_w5"),
+                     std::string("rolling_avg_amount_w9"),
+                 }) {
+                if (available.find(rolling_name) != available.end() &&
+                    seen.insert(rolling_name).second) {
+                    expanded.push_back(rolling_name);
+                }
+            }
+            continue;
+        }
+
         if (available.find(name) == available.end()) {
             std::ostringstream message;
             message << "unknown benchmark: " << name << ". Available:";
             for (const auto& entry : available) {
                 message << ' ' << entry.first;
             }
-            message << " all_agg";
+            message << " all_agg all_rolling";
             throw std::runtime_error(message.str());
         }
 
@@ -473,6 +493,19 @@ std::string default_customers_path_for_data(const std::string& data_path) {
     return (transactions_path.parent_path() / "customers.csv").string();
 }
 
+std::size_t rolling_avg_window_size(const std::string& operation) {
+    if (operation == "rolling_avg_amount_w3") {
+        return 3;
+    }
+    if (operation == "rolling_avg_amount_w5") {
+        return 5;
+    }
+    if (operation == "rolling_avg_amount_w9") {
+        return 9;
+    }
+    return 0;
+}
+
 BenchmarkResult run_openfhe_ckks_benchmark(
     const Transactions& data,
     const std::string& operation,
@@ -482,11 +515,12 @@ BenchmarkResult run_openfhe_ckks_benchmark(
     if (operation != "sum_amount" &&
         operation != "weighted_sum_amount_risk" &&
         operation != "weighted_sum_amount_risk_encrypted" &&
+        rolling_avg_window_size(operation) == 0 &&
         operation != "select_amount_gt_5000") {
         throw std::runtime_error(
             "OpenFHE CKKS backend currently supports sum_amount, "
             "weighted_sum_amount_risk, weighted_sum_amount_risk_encrypted, "
-            "and select_amount_gt_5000");
+            "rolling_avg_amount_w3/w5/w9, and select_amount_gt_5000");
     }
 
 #ifdef UTILITY_BENCH_WITH_OPENFHE
@@ -502,6 +536,17 @@ BenchmarkResult run_openfhe_ckks_benchmark(
             thread_count,
             baseline.baseline_value,
             baseline.plain_time_ms,
+            config);
+    }
+
+    const std::size_t rolling_window_size = rolling_avg_window_size(operation);
+    if (rolling_window_size != 0) {
+        return openfhe_ckks_rolling_avg_amount(
+            data,
+            thread_count,
+            baseline.baseline_value,
+            baseline.plain_time_ms,
+            rolling_window_size,
             config);
     }
 

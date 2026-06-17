@@ -9,6 +9,7 @@ OpenFHE CKKS packed `EvalSum` implementation.
 - [Encrypted comparison next steps](docs/ENCRYPTED_COMPARISON_NEXT_STEPS.md)
 - [FedAvg merge benchmark](docs/FEDAVG_BENCH_PLAN.md)
 - [Polynomial ML CKKS benchmark](docs/POLY_ML_BENCH_PLAN.md)
+- [Rolling average CKKS benchmark](docs/ROLLING_AVG_BENCH_PLAN.md)
 - [PSI + OpenFHE join plan](docs/PSI_OPENFHE_JOIN_PLAN.md)
 - [PSI install notes](docs/PSI_INSTALL.md)
 
@@ -260,6 +261,32 @@ dataset folder. Use `--customers path/to/customers.csv` to override it.
 Use `--bench all_agg` to run both aggregate benchmarks, `sum_amount` and
 `weighted_sum_amount_risk`. `all_agg` does not include encrypted comparison
 benchmarks.
+
+Rolling average, using CKKS rotations over `amount`:
+
+```bash
+rm -f results/benchmark_results_rolling_avg_100k.csv
+./build/utility_bench \
+  --data data/generated/medium_100k/transactions.csv \
+  --bench all_rolling \
+  --backend all \
+  --threads 1 4 8 \
+  --ckks-ring-dim 0 \
+  --ckks-batch-size 0 \
+  --ckks-depth 1 \
+  --ckks-scale-bits 50 \
+  --ckks-first-mod-bits 60 \
+  --results results/benchmark_results_rolling_avg_100k.csv
+```
+
+Available rolling benchmarks:
+
+```text
+rolling_avg_amount_w3
+rolling_avg_amount_w5
+rolling_avg_amount_w9
+all_rolling
+```
 
 For the all-encrypted numeric version, use:
 
