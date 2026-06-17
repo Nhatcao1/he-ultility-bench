@@ -365,6 +365,14 @@ FedAvgResult run_openfhe_fedavg(
         ciphertext_by_client.push_back(std::move(chunks));
     }
 
+    std::vector<double> client_alphas;
+    client_alphas.reserve(fixture.clients.size());
+    for (const auto& client : fixture.clients) {
+        client_alphas.push_back(
+            static_cast<double>(client.num_examples) /
+            static_cast<double>(fixture.total_examples));
+    }
+
     std::vector<Ciphertext<DCRTPoly>> global_chunks;
     global_chunks.reserve(result.chunks);
     const Timer merge_timer;
@@ -372,10 +380,9 @@ FedAvgResult run_openfhe_fedavg(
         bool has_chunk = false;
         Ciphertext<DCRTPoly> global_chunk;
         for (std::size_t client_index = 0; client_index < fixture.clients.size(); ++client_index) {
-            const double alpha =
-                static_cast<double>(fixture.clients[client_index].num_examples) /
-                static_cast<double>(fixture.total_examples);
-            auto weighted = cc->EvalMult(ciphertext_by_client[client_index][chunk_index], alpha);
+            auto weighted = cc->EvalMult(
+                ciphertext_by_client[client_index][chunk_index],
+                client_alphas[client_index]);
             if (has_chunk) {
                 global_chunk = cc->EvalAdd(global_chunk, weighted);
             } else {
@@ -414,12 +421,12 @@ FedAvgResult run_openfhe_fedavg(
     result.total_he_time_ms =
         result.encode_time_ms + result.encrypt_time_ms + result.serialize_time_ms +
         result.deserialize_time_ms + result.he_merge_time_ms + result.decrypt_time_ms +
-        result.decode_time_ms + result.unflatten_time_ms;
+        result.decode_time_ms;
     result.notes =
 #ifdef _OPENMP
-        "fedavg_json_fixture;server_weighted;ciphertext_serialized_in_memory;public_num_examples;omp_set_num_threads";
+        "fedavg_json_fixture;server_weighted;ciphertext_serialized_in_memory;public_num_examples;he_total_excludes_json_load_and_unflatten;omp_set_num_threads";
 #else
-        "fedavg_json_fixture;server_weighted;ciphertext_serialized_in_memory;public_num_examples;openmp_not_seen_by_runner";
+        "fedavg_json_fixture;server_weighted;ciphertext_serialized_in_memory;public_num_examples;he_total_excludes_json_load_and_unflatten;openmp_not_seen_by_runner";
 #endif
     return result;
 }

@@ -139,6 +139,11 @@ plain_payload_bytes
 serialized_ciphertext_bytes
 ```
 
+`total_he_time_ms` is intentionally limited to the HE/serialization path:
+encode, encrypt, serialize, deserialize, encrypted merge, decrypt, and decode.
+JSON loading, flat-vector preparation, and final unflattening back into layer
+shapes are reported separately or excluded from the HE total.
+
 ## Notes
 
 The benchmark decrypts the final aggregate for correctness checking. In a real
