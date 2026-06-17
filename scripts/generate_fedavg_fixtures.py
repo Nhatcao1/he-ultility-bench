@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate small FedAvg merge fixtures for plaintext and OpenFHE tests."""
+"""Generate FedAvg merge fixtures for plaintext and OpenFHE tests."""
 
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ class FixtureSpec:
     client_count: int
     example_counts: tuple[int, ...]
     layers: tuple[LayerSpec, ...]
+    include_nested_parameters: bool = True
 
 
 FIXTURES = [
@@ -49,7 +50,35 @@ FIXTURES = [
             LayerSpec("dense2.bias", (3,)),
         ),
     ),
+    FixtureSpec(
+        name="flat_100k_c4",
+        client_count=4,
+        example_counts=(800, 1200, 1600, 2400),
+        layers=(
+            LayerSpec("block1.weight", (256, 256)),
+            LayerSpec("block1.bias", (256,)),
+            LayerSpec("block2.weight", (128, 256)),
+            LayerSpec("block2.bias", (128,)),
+            LayerSpec("adapter.weight", (41, 32)),
+        ),
+        include_nested_parameters=False,
+    ),
+    FixtureSpec(
+        name="flat_1m_c4",
+        client_count=4,
+        example_counts=(800, 1200, 1600, 2400),
+        layers=(
+            LayerSpec("embedding_delta", (1000, 512)),
+            LayerSpec("encoder_delta", (512, 512)),
+            LayerSpec("projection_delta", (400, 512)),
+            LayerSpec("head_delta", (41, 512)),
+            LayerSpec("head_bias", (64,)),
+        ),
+        include_nested_parameters=False,
+    ),
 ]
+
+FIXTURE_BY_NAME = {spec.name: spec for spec in FIXTURES}
 
 
 def parse_args() -> argparse.Namespace:
@@ -67,6 +96,16 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=42,
         help="Base RNG seed. Default: 42.",
+    )
+    parser.add_argument(
+        "--fixtures",
+        nargs="+",
+        default=["tiny_mlp_11_c2", "mini_mlp_75_c4"],
+        choices=sorted(FIXTURE_BY_NAME),
+        help=(
+            "Fixture names to generate. Default: tiny_mlp_11_c2 mini_mlp_75_c4. "
+            "Use flat_100k_c4 or flat_1m_c4 for large benchmark runs."
+        ),
     )
     return parser.parse_args()
 
@@ -120,8 +159,11 @@ def make_client_flat(
     return base + trend + jitter
 
 
-def write_json(path: Path, data: dict[str, Any]) -> None:
-    path.write_text(json.dumps(data, indent=2) + "\n")
+def write_json(path: Path, data: dict[str, Any], *, pretty: bool = True) -> None:
+    if pretty:
+        path.write_text(json.dumps(data, indent=2) + "\n")
+    else:
+        path.write_text(json.dumps(data, separators=(",", ":")) + "\n")
 
 
 def generate_fixture(spec: FixtureSpec, out_root: Path, seed: int) -> None:
@@ -143,15 +185,23 @@ def generate_fixture(spec: FixtureSpec, out_root: Path, seed: int) -> None:
         flat = make_client_flat(rng, param_count, client_index)
         global_flat += alpha * flat
 
-        clients.append(
-            {
-                "client_id": client_id,
-                "num_examples": num_examples,
-                "alpha": alpha,
-                "parameters": unflatten(flat, layout),
-                "parameters_flat": flat.tolist(),
-            }
-        )
+        client_doc = {
+            "client_id": client_id,
+            "num_examples": num_examples,
+            "alpha": alpha,
+            "parameters_flat": flat.tolist(),
+        }
+        if spec.include_nested_parameters:
+            client_doc["parameters"] = unflatten(flat, layout)
+        clients.append(client_doc)
+
+    expected_doc: dict[str, Any] = {
+        "fixture_name": spec.name,
+        "param_count": param_count,
+        "expected_global_flat": global_flat.tolist(),
+    }
+    if spec.include_nested_parameters:
+        expected_doc["expected_global_parameters"] = unflatten(global_flat, layout)
 
     write_json(
         fixture_dir / "layout.json",
@@ -170,23 +220,20 @@ def generate_fixture(spec: FixtureSpec, out_root: Path, seed: int) -> None:
             "total_examples": total_examples,
             "clients": clients,
         },
+        pretty=spec.include_nested_parameters,
     )
-    write_json(
-        fixture_dir / "expected_global.json",
-        {
-            "fixture_name": spec.name,
-            "param_count": param_count,
-            "expected_global_parameters": unflatten(global_flat, layout),
-            "expected_global_flat": global_flat.tolist(),
-        },
-    )
+    write_json(fixture_dir / "expected_global.json", expected_doc, pretty=spec.include_nested_parameters)
     write_json(
         fixture_dir / "README.json",
         {
             "purpose": "FedAvg merge fixture for plaintext and OpenFHE CKKS benchmarks.",
+            "param_count": param_count,
+            "client_count": spec.client_count,
+            "nested_parameters_included": spec.include_nested_parameters,
             "notes": [
                 "clients.json is the generated client result package.",
                 "expected_global.json is the correctness oracle.",
+                "Large fixtures are flat-only to avoid duplicating huge tensor payloads.",
                 "OpenFHE benchmark encrypts flattened chunks, serializes/deserializes ciphertexts, merges, decrypts, and compares.",
             ],
         },
@@ -201,8 +248,8 @@ def generate_fixture(spec: FixtureSpec, out_root: Path, seed: int) -> None:
 def main() -> None:
     args = parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
-    for spec in FIXTURES:
-        generate_fixture(spec, args.out, args.seed)
+    for fixture_name in args.fixtures:
+        generate_fixture(FIXTURE_BY_NAME[fixture_name], args.out, args.seed)
     print(f"Saved FedAvg fixtures under: {args.out}")
 
 

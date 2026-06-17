@@ -22,19 +22,28 @@ It does not require encrypted comparison, encrypted equality, or joins.
 
 ## Fixture Generator
 
-Generate small JSON fixtures:
+Generate default smoke-test JSON fixtures:
 
 ```bash
 python3 scripts/generate_fedavg_fixtures.py
+```
+
+Generate larger fixtures for meaningful OpenFHE timing:
+
+```bash
+python3 scripts/generate_fedavg_fixtures.py --fixtures flat_100k_c4
+python3 scripts/generate_fedavg_fixtures.py --fixtures flat_1m_c4
 ```
 
 Validate fixture math without OpenFHE:
 
 ```bash
 python3 scripts/test_fedavg_fixtures.py
+python3 scripts/test_fedavg_fixtures.py --fixtures flat_100k_c4
+python3 scripts/test_fedavg_fixtures.py --fixtures flat_1m_c4
 ```
 
-Default output:
+Fixture output layout:
 
 ```text
 data/generated_fedavg/
@@ -48,10 +57,24 @@ data/generated_fedavg/
     clients.json
     expected_global.json
     README.json
+  flat_100k_c4/
+    layout.json
+    clients.json
+    expected_global.json
+    README.json
+  flat_1m_c4/
+    layout.json
+    clients.json
+    expected_global.json
+    README.json
 ```
 
 The JSON files are the readable source fixtures. Ciphertext serialization is
 measured inside the C++ benchmark after encryption.
+
+Tiny and mini fixtures include nested layer tensors for readability. Larger
+fixtures are flat-only in `clients.json` and `expected_global.json`; the layout
+file still records how the flat vector maps back to model-like layers.
 
 ## Fixtures
 
@@ -59,8 +82,8 @@ measured inside the C++ benchmark after encryption.
 | --- | ---: | ---: | --- |
 | `tiny_mlp_11_c2` | 11 | 2 | Human-readable correctness. |
 | `mini_mlp_75_c4` | 75 | 4 | Main debug fixture for flatten/chunk/merge/unflatten. |
-
-Larger fixtures can be added later after the OpenFHE path is stable.
+| `flat_100k_c4` | 100,000 | 4 | Medium FL-scale timing fixture. |
+| `flat_1m_c4` | 1,000,000 | 4 | Large FL-scale timing fixture. |
 
 ## Benchmark Modes
 
@@ -117,6 +140,32 @@ Run the mini fixture:
   --ckks-scale-bits 50 \
   --ckks-first-mod-bits 60 \
   --results results/fedavg_results.csv
+```
+
+Run the 100k and 1M fixtures across several OpenFHE thread settings:
+
+```bash
+./build/fedavg_bench \
+  --fixture data/generated_fedavg/flat_100k_c4 \
+  --backend all \
+  --threads 1 4 8 \
+  --ckks-ring-dim 0 \
+  --ckks-batch-size 0 \
+  --ckks-depth 1 \
+  --ckks-scale-bits 50 \
+  --ckks-first-mod-bits 60 \
+  --results results/fedavg_results_100k_threads.csv
+
+./build/fedavg_bench \
+  --fixture data/generated_fedavg/flat_1m_c4 \
+  --backend all \
+  --threads 1 4 8 \
+  --ckks-ring-dim 0 \
+  --ckks-batch-size 0 \
+  --ckks-depth 1 \
+  --ckks-scale-bits 50 \
+  --ckks-first-mod-bits 60 \
+  --results results/fedavg_results_1m_threads.csv
 ```
 
 ## Metrics

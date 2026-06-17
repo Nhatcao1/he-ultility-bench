@@ -25,6 +25,12 @@ def parse_args() -> argparse.Namespace:
         default=1e-12,
         help="Max absolute error tolerance. Default: 1e-12.",
     )
+    parser.add_argument(
+        "--fixtures",
+        nargs="+",
+        default=None,
+        help="Optional fixture names to check. Default: every generated fixture.",
+    )
     return parser.parse_args()
 
 
@@ -76,6 +82,12 @@ def main() -> None:
         path for path in args.root.iterdir()
         if path.is_dir() and (path / "clients.json").exists()
     )
+    if args.fixtures:
+        wanted = set(args.fixtures)
+        fixture_dirs = [path for path in fixture_dirs if path.name in wanted]
+        missing = wanted - {path.name for path in fixture_dirs}
+        if missing:
+            raise ValueError(f"missing requested fixtures under {args.root}: {sorted(missing)}")
     if not fixture_dirs:
         raise ValueError(f"no FedAvg fixtures found under {args.root}")
 

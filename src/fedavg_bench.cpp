@@ -40,7 +40,7 @@ struct CliArgs {
     std::size_t ckks_depth = 1;
     std::size_t ckks_scaling_mod_size = 50;
     std::size_t ckks_first_mod_size = 60;
-    std::size_t threads = 1;
+    std::vector<std::size_t> threads = {1};
 };
 
 struct FedAvgResult {
@@ -77,7 +77,7 @@ struct FedAvgResult {
 void print_usage(const char* program) {
     std::cerr
         << "Usage: " << program << " [--fixture data/generated_fedavg/mini_mlp_75_c4] "
-        << "[--backend plain|openfhe_ckks|all] [--threads 1] "
+        << "[--backend plain|openfhe_ckks|all] [--threads 1 4 8] "
         << "[--ckks-ring-dim 0] [--ckks-batch-size 0] "
         << "[--ckks-depth 1] [--ckks-scale-bits 50] [--ckks-first-mod-bits 60] "
         << "[--results results/fedavg_results.csv]\n";
@@ -102,7 +102,13 @@ CliArgs parse_args(int argc, char** argv) {
         } else if (flag == "--backend") {
             args.backend = need_value(flag);
         } else if (flag == "--threads") {
-            args.threads = static_cast<std::size_t>(std::stoull(need_value(flag)));
+            args.threads.clear();
+            while (i + 1 < argc && std::string(argv[i + 1]).rfind("--", 0) != 0) {
+                args.threads.push_back(static_cast<std::size_t>(std::stoull(argv[++i])));
+            }
+            if (args.threads.empty()) {
+                throw std::runtime_error("--threads requires at least one value");
+            }
         } else if (flag == "--ckks-ring-dim") {
             args.ckks_ring_dim = static_cast<std::size_t>(std::stoull(need_value(flag)));
         } else if (flag == "--ckks-batch-size") {
@@ -122,8 +128,10 @@ CliArgs parse_args(int argc, char** argv) {
     if (args.backend != "plain" && args.backend != "openfhe_ckks" && args.backend != "all") {
         throw std::runtime_error("--backend must be plain, openfhe_ckks, or all");
     }
-    if (args.threads == 0) {
-        throw std::runtime_error("--threads must be positive");
+    if (std::any_of(args.threads.begin(), args.threads.end(), [](std::size_t threads) {
+            return threads == 0;
+        })) {
+        throw std::runtime_error("--threads values must be positive");
     }
     return args;
 }
@@ -288,7 +296,7 @@ FedAvgResult run_openfhe_fedavg(
     result.backend = "openfhe_ckks_fedavg";
     result.clients = fixture.clients.size();
     result.parameters = fixture.param_count;
-    result.threads = configure_threads(args.threads);
+    result.threads = configure_threads(args.threads.front());
     result.requested_ring_dimension = args.ckks_ring_dim;
     result.multiplicative_depth = args.ckks_depth;
     result.scaling_mod_size = args.ckks_scaling_mod_size;
@@ -452,15 +460,20 @@ int main(int argc, char** argv) {
 
         if (args.backend == "openfhe_ckks" || args.backend == "all") {
 #ifdef UTILITY_BENCH_WITH_OPENFHE
-            const auto he = run_openfhe_fedavg(fixture, fixture_name, args);
-            append_result_csv(args.results_path, he);
-            std::cout << "Ran " << he.backend
-                      << " fixture=" << he.fixture
-                      << " params=" << he.parameters
-                      << " chunks=" << he.chunks
-                      << " he_total=" << he.total_he_time_ms
-                      << " mae=" << he.mae_vs_expected
-                      << " max_abs=" << he.max_abs_error_vs_expected << '\n';
+            for (const std::size_t requested_threads : args.threads) {
+                CliArgs thread_args = args;
+                thread_args.threads = {requested_threads};
+                const auto he = run_openfhe_fedavg(fixture, fixture_name, thread_args);
+                append_result_csv(args.results_path, he);
+                std::cout << "Ran " << he.backend
+                          << " fixture=" << he.fixture
+                          << " params=" << he.parameters
+                          << " chunks=" << he.chunks
+                          << " threads=" << he.threads
+                          << " he_total=" << he.total_he_time_ms
+                          << " mae=" << he.mae_vs_expected
+                          << " max_abs=" << he.max_abs_error_vs_expected << '\n';
+            }
 #else
             throw std::runtime_error(
                 "fedavg_bench was built without UTILITY_BENCH_WITH_OPENFHE=ON");
