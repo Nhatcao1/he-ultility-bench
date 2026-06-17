@@ -8,6 +8,7 @@ OpenFHE CKKS packed `EvalSum` implementation.
 - [CKKS depth recommendations](docs/CKKS_DEPTH_RECOMMENDATIONS.md)
 - [Encrypted comparison next steps](docs/ENCRYPTED_COMPARISON_NEXT_STEPS.md)
 - [FedAvg merge benchmark](docs/FEDAVG_BENCH_PLAN.md)
+- [Polynomial ML CKKS benchmark](docs/POLY_ML_BENCH_PLAN.md)
 
 ## Generate Test Data
 
@@ -146,6 +147,37 @@ Run larger FedAvg benchmarks across several OpenFHE thread settings:
   --ckks-scale-bits 50 \
   --ckks-first-mod-bits 60 \
   --results results/fedavg_results_10m_threads.csv
+```
+
+Run polynomial ML-style CKKS depth and bootstrap benchmarks:
+
+```bash
+./build/poly_ml_bench \
+  --data data/generated/medium_100k/transactions.csv \
+  --bench poly_score_degree3 \
+  --bench poly_score_degree7 \
+  --backend all \
+  --threads 1 4 8 \
+  --ckks-ring-dim 0 \
+  --ckks-batch-size 0 \
+  --ckks-depth 7 \
+  --ckks-scale-bits 50 \
+  --ckks-first-mod-bits 60 \
+  --results results/poly_ml_depth_100k.csv
+
+./build/poly_ml_bench \
+  --data data/generated/medium_100k/transactions.csv \
+  --bench poly_score_degree9_bootstrap \
+  --backend all \
+  --threads 1 \
+  --ckks-ring-dim 0 \
+  --ckks-batch-size 1024 \
+  --ckks-depth 9 \
+  --ckks-scale-bits 59 \
+  --ckks-first-mod-bits 60 \
+  --bootstrap-levels-after 10 \
+  --bootstrap-level-budget 4 4 \
+  --results results/poly_ml_bootstrap_smoke.csv
 ```
 
 For CKKS aggregation, `tiny_1k` is only a smoke test. It can be smaller than the

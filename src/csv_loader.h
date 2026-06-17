@@ -13,6 +13,9 @@
 // columns actually participate in the timed computation.
 struct Transactions {
     std::vector<std::size_t> customer_id;
+    std::vector<double> x1;
+    std::vector<double> x2;
+    std::vector<double> x3;
     std::vector<double> amount;
     std::vector<double> risk_weight_by_row;
 
@@ -65,6 +68,9 @@ inline Transactions load_transactions_csv(
 
         // Columns follow TRANSACTION_HEADER in scripts/generate_benchmark_data.py.
         data.customer_id.push_back(static_cast<std::size_t>(std::stoull(fields[1])));
+        data.x1.push_back(std::stod(fields[5]));
+        data.x2.push_back(std::stod(fields[6]));
+        data.x3.push_back(std::stod(fields[7]));
         data.amount.push_back(std::stod(fields[10]));
 
         if (max_rows != 0 && data.size() >= max_rows) {
