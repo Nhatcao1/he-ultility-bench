@@ -9,6 +9,7 @@ OpenFHE CKKS packed `EvalSum` implementation.
 - [Encrypted comparison next steps](docs/ENCRYPTED_COMPARISON_NEXT_STEPS.md)
 - [FedAvg merge benchmark](docs/FEDAVG_BENCH_PLAN.md)
 - [Polynomial ML CKKS benchmark](docs/POLY_ML_BENCH_PLAN.md)
+- [PSI + OpenFHE join plan](docs/PSI_OPENFHE_JOIN_PLAN.md)
 
 ## Generate Test Data
 
