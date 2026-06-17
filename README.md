@@ -309,12 +309,12 @@ homomorphic multiply. The current medium join path still expands
 `customer_id -> risk_weight` before encryption; fully encrypted join-key
 matching is a separate encrypted equality/join problem.
 
-OpenFHE encrypted comparison for a real `WHERE amount > 5000` predicate:
+OpenFHE encrypted comparison only for `amount > 5000`:
 
 ```bash
 ./build/utility_bench \
   --data data/generated/tiny_1k/transactions.csv \
-  --bench select_amount_gt_5000 \
+  --bench compare_amount_gt_5000 \
   --backend all \
   --threads 1 4 8 \
   --ckks-ring-dim 0 \
@@ -322,8 +322,12 @@ OpenFHE encrypted comparison for a real `WHERE amount > 5000` predicate:
   --ckks-depth 17 \
   --ckks-scale-bits 50 \
   --ckks-first-mod-bits 60 \
-  --results results/benchmark_results_select_amount_gt_5000_tiny.csv
+  --results results/benchmark_results_compare_amount_gt_5000_tiny.csv
 ```
+
+This benchmark decrypts and checks only the encrypted comparison mask. It does
+not multiply the mask by `amount`, does not select rows, and does not run
+`EvalSum`.
 
 For a very small comparison debug run, limit the loader to the first 10 rows:
 
@@ -331,7 +335,7 @@ For a very small comparison debug run, limit the loader to the first 10 rows:
 ./build/utility_bench \
   --data data/generated/tiny_1k/transactions.csv \
   --max-rows 10 \
-  --bench select_amount_gt_5000 \
+  --bench compare_amount_gt_5000 \
   --backend all \
   --threads 1 \
   --ckks-ring-dim 0 \
@@ -339,19 +343,21 @@ For a very small comparison debug run, limit the loader to the first 10 rows:
   --ckks-depth 17 \
   --ckks-scale-bits 50 \
   --ckks-first-mod-bits 60 \
-  --results results/benchmark_results_select_amount_gt_5000_first10.csv
+  --results results/benchmark_results_compare_amount_gt_5000_first10.csv
 ```
 
 This benchmark represents:
 
 ```sql
-SELECT amount
-FROM transactions
-WHERE amount > 5000;
+SELECT amount > 5000
+FROM transactions;
 ```
 
+The scalar result is the number of rows whose encrypted comparison mask is
+true.
+
 Because the result CSV stores scalar values, `result_value` is the checksum /
-sum of the selected output vector. The OpenFHE version uses CKKS-to-FHEW scheme
+sum of the comparison mask bits. The OpenFHE version uses CKKS-to-FHEW scheme
 switching via OpenFHE comparison APIs, not a precomputed mask.
 
 Start with `tiny_1k` for this benchmark, then scale up only after correctness

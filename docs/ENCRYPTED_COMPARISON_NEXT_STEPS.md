@@ -1,13 +1,12 @@
 # Encrypted Comparison Next Steps
 
-This note tracks what to do after the first `select_amount_gt_5000` benchmark.
+This note tracks the stripped-down `compare_amount_gt_5000` benchmark.
 
 The benchmark represents:
 
 ```sql
-SELECT amount
-FROM transactions
-WHERE amount > 5000;
+SELECT amount > 5000
+FROM transactions;
 ```
 
 The plain C++ version is trivial, but the encrypted OpenFHE version is not.
@@ -16,8 +15,47 @@ For CKKS, `amount > 5000` is not a native cheap arithmetic operation like
 CKKS-to-FHEW scheme switching so OpenFHE can evaluate the comparison and return
 a mask-like result.
 
+This benchmark intentionally stops there. It does not multiply the mask by
+`amount`, does not select rows, and does not run `EvalSum`.
+
 That makes this benchmark much heavier than `SUM(amount)` or
 `SUM(amount * risk_weight)`.
+
+## Comparison-Only vs Select
+
+The current benchmark is:
+
+```text
+compare_amount_gt_5000
+```
+
+It computes only:
+
+```text
+Enc(amount) > Enc(5000) -> Enc(mask)
+```
+
+Then it decrypts the mask for correctness and reports the mask checksum, which
+is the count of rows where `amount > 5000`.
+
+The older selected-amount idea was:
+
+```text
+select_amount_gt_5000
+```
+
+That required:
+
+```text
+Enc(amount) > Enc(5000) -> Enc(mask)
+Enc(amount) * Enc(mask) -> Enc(selected_amount)
+decode selected amount values
+sum selected amount checksum
+```
+
+We are not using that path for the near-term comparison benchmark. It mixes
+comparison cost with mask-application and selected-value decoding, making the
+result harder to debug.
 
 ## Current Lesson
 
@@ -37,10 +75,9 @@ encrypt amount
 encode threshold
 encrypt threshold
 scheme-switch comparison
-multiply amount by comparison mask
-decrypt selected values
-decode selected values
-sum selected checksum locally
+decrypt comparison mask
+decode comparison mask
+sum mask checksum locally
 ```
 
 So a 100k encrypted comparison can look frozen even while it is still working.
@@ -64,12 +101,12 @@ shapes. Result decoding still sums only the real input rows.
 ```bash
 cd ~/he-ultility-bench
 
-rm -f results/benchmark_results_select_amount_gt_5000_first10.csv
+rm -f results/benchmark_results_compare_amount_gt_5000_first10.csv
 
 ./build/utility_bench \
   --data data/generated/tiny_1k/transactions.csv \
   --max-rows 10 \
-  --bench select_amount_gt_5000 \
+  --bench compare_amount_gt_5000 \
   --backend all \
   --threads 1 \
   --ckks-ring-dim 0 \
@@ -77,7 +114,7 @@ rm -f results/benchmark_results_select_amount_gt_5000_first10.csv
   --ckks-depth 17 \
   --ckks-scale-bits 50 \
   --ckks-first-mod-bits 60 \
-  --results results/benchmark_results_select_amount_gt_5000_first10.csv
+  --results results/benchmark_results_compare_amount_gt_5000_first10.csv
 ```
 
 ### Tiny Smoke Test
@@ -85,11 +122,11 @@ rm -f results/benchmark_results_select_amount_gt_5000_first10.csv
 ```bash
 cd ~/he-ultility-bench
 
-rm -f results/benchmark_results_select_amount_gt_5000_tiny_b16.csv
+rm -f results/benchmark_results_compare_amount_gt_5000_tiny_b16.csv
 
 ./build/utility_bench \
   --data data/generated/tiny_1k/transactions.csv \
-  --bench select_amount_gt_5000 \
+  --bench compare_amount_gt_5000 \
   --backend all \
   --threads 1 \
   --ckks-ring-dim 0 \
@@ -97,7 +134,7 @@ rm -f results/benchmark_results_select_amount_gt_5000_tiny_b16.csv
   --ckks-depth 17 \
   --ckks-scale-bits 50 \
   --ckks-first-mod-bits 60 \
-  --results results/benchmark_results_select_amount_gt_5000_tiny_b16.csv
+  --results results/benchmark_results_compare_amount_gt_5000_tiny_b16.csv
 ```
 
 ### 100k With Larger Chunks
@@ -108,11 +145,11 @@ Try `256` first. If it is still too slow, try `512`. Do not sweep
 ```bash
 cd ~/he-ultility-bench
 
-rm -f results/benchmark_results_select_amount_gt_5000_100k_b256.csv
+rm -f results/benchmark_results_compare_amount_gt_5000_100k_b256.csv
 
 ./build/utility_bench \
   --data data/generated/medium_100k/transactions.csv \
-  --bench select_amount_gt_5000 \
+  --bench compare_amount_gt_5000 \
   --backend all \
   --threads 1 \
   --ckks-ring-dim 0 \
@@ -120,7 +157,7 @@ rm -f results/benchmark_results_select_amount_gt_5000_100k_b256.csv
   --ckks-depth 17 \
   --ckks-scale-bits 50 \
   --ckks-first-mod-bits 60 \
-  --results results/benchmark_results_select_amount_gt_5000_100k_b256.csv
+  --results results/benchmark_results_compare_amount_gt_5000_100k_b256.csv
 ```
 
 ## Why `--ckks-ring-dim 0`

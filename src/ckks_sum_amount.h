@@ -547,7 +547,7 @@ inline BenchmarkResult openfhe_ckks_rolling_avg_amount(
     return result;
 }
 
-inline BenchmarkResult openfhe_ckks_select_amount_gt_5000(
+inline BenchmarkResult openfhe_ckks_compare_amount_gt_5000(
     const Transactions& data,
     std::size_t thread_count,
     double baseline_value,
@@ -555,7 +555,6 @@ inline BenchmarkResult openfhe_ckks_select_amount_gt_5000(
     const CkksSumConfig& config = CkksSumConfig{}) {
     using lbcrypto::ADVANCEDSHE;
     using lbcrypto::CCParams;
-    using lbcrypto::Ciphertext;
     using lbcrypto::CryptoContext;
     using lbcrypto::CryptoContextCKKSRNS;
     using lbcrypto::DCRTPoly;
@@ -573,15 +572,12 @@ inline BenchmarkResult openfhe_ckks_select_amount_gt_5000(
     using lbcrypto::UNIFORM_TERNARY;
 
     const std::size_t openfhe_threads = configure_openfhe_threads(thread_count);
-
-    // Scheme switching is much heavier than plain CKKS EvalSum. OpenFHE's
-    // example uses sparse 16-slot comparison; keep that as the safe default
-    // unless the caller explicitly requests a larger batch size.
     const std::size_t comparison_slots = nonzero_or_default(config.batch_size, 16);
     if (!is_power_of_two(comparison_slots)) {
         throw std::runtime_error(
-            "select_amount_gt_5000 requires --ckks-batch-size to be 0 or a power of two");
+            "compare_amount_gt_5000 requires --ckks-batch-size to be 0 or a power of two");
     }
+
     const std::size_t comparison_depth = std::max<std::size_t>(config.multiplicative_depth, 17);
     const uint32_t log_q_lwe = 25;
     const double threshold = 5000.0;
@@ -681,19 +677,18 @@ inline BenchmarkResult openfhe_ckks_select_amount_gt_5000(
             static_cast<uint32_t>(comparison_slots),
             p_lwe,
             scale_sign_fhew);
-        auto selected_amount = cc->EvalMult(amount_ciphertext, comparison_mask);
         he_eval_time_ms += eval_timer.elapsed_ms();
 
-        Plaintext selected_plaintext;
+        Plaintext comparison_plaintext;
         const Timer decrypt_timer;
-        cc->Decrypt(keys.secretKey, selected_amount, &selected_plaintext);
+        cc->Decrypt(keys.secretKey, comparison_mask, &comparison_plaintext);
         decrypt_time_ms += decrypt_timer.elapsed_ms();
 
         const Timer decode_timer;
-        selected_plaintext->SetLength(used_slots);
-        const auto selected_values = selected_plaintext->GetRealPackedValue();
-        for (std::size_t i = 0; i < used_slots && i < selected_values.size(); ++i) {
-            result_value += selected_values[i];
+        comparison_plaintext->SetLength(used_slots);
+        const auto comparison_values = comparison_plaintext->GetRealPackedValue();
+        for (std::size_t i = 0; i < used_slots && i < comparison_values.size(); ++i) {
+            result_value += comparison_values[i];
         }
         decode_time_ms += decode_timer.elapsed_ms();
     }
@@ -704,7 +699,7 @@ inline BenchmarkResult openfhe_ckks_select_amount_gt_5000(
     const double relative_error = divide_or_zero(absolute_error, std::abs(baseline_value));
 
     BenchmarkResult result;
-    result.operation = "select_amount_gt_5000";
+    result.operation = "compare_amount_gt_5000";
     result.backend = "openfhe_ckks_scheme_switch";
     result.rows = data.size();
     result.threads = openfhe_threads;
@@ -736,9 +731,9 @@ inline BenchmarkResult openfhe_ckks_select_amount_gt_5000(
     result.rotation_count_reported = 0;
     result.notes =
 #ifdef _OPENMP
-        "compute_only_no_io;encrypted_where_amount_gt_5000;ckks_fhew_scheme_switching;comparison_slots_default_16;if_batch_size_unset;omp_set_num_threads;setup_recorded_separately;encrypt_decrypt_in_total";
+        "compute_only_no_io;encrypted_comparison_only_amount_gt_5000;ckks_fhew_scheme_switching;no_evalsum;no_mask_apply;no_selected_amount;comparison_slots_default_16;if_batch_size_unset;omp_set_num_threads;setup_recorded_separately;encrypt_decrypt_in_total";
 #else
-        "compute_only_no_io;encrypted_where_amount_gt_5000;ckks_fhew_scheme_switching;comparison_slots_default_16;if_batch_size_unset;openmp_not_seen_by_runner;setup_recorded_separately;encrypt_decrypt_in_total";
+        "compute_only_no_io;encrypted_comparison_only_amount_gt_5000;ckks_fhew_scheme_switching;no_evalsum;no_mask_apply;no_selected_amount;comparison_slots_default_16;if_batch_size_unset;openmp_not_seen_by_runner;setup_recorded_separately;encrypt_decrypt_in_total";
 #endif
     cc->ClearStaticMapsAndVectors();
     return result;

@@ -79,7 +79,7 @@ void print_usage(const char* program) {
         << "  rolling_avg_amount_w3\n"
         << "  rolling_avg_amount_w5\n"
         << "  rolling_avg_amount_w9\n"
-        << "  select_amount_gt_5000\n"
+        << "  compare_amount_gt_5000\n"
         << "  tiny_lookup_onehot_risk_weight\n"
         << "  tiny_join_onehot_amount_risk\n\n"
         << "Default backend: plain_cpp.\n"
@@ -323,7 +323,7 @@ std::map<std::string, BenchmarkDefinition> plain_benchmarks() {
              make_scalar_benchmark("rolling_avg_amount_w3", plaintext_rolling_avg_amount_w3),
              make_scalar_benchmark("rolling_avg_amount_w5", plaintext_rolling_avg_amount_w5),
              make_scalar_benchmark("rolling_avg_amount_w9", plaintext_rolling_avg_amount_w9),
-             make_scalar_benchmark("select_amount_gt_5000", plaintext_select_amount_gt_5000),
+             make_scalar_benchmark("compare_amount_gt_5000", plaintext_compare_amount_gt_5000),
          }) {
         benchmarks.emplace(benchmark.name, benchmark);
     }
@@ -516,11 +516,11 @@ BenchmarkResult run_openfhe_ckks_benchmark(
         operation != "weighted_sum_amount_risk" &&
         operation != "weighted_sum_amount_risk_encrypted" &&
         rolling_avg_window_size(operation) == 0 &&
-        operation != "select_amount_gt_5000") {
+        operation != "compare_amount_gt_5000") {
         throw std::runtime_error(
             "OpenFHE CKKS backend currently supports sum_amount, "
             "weighted_sum_amount_risk, weighted_sum_amount_risk_encrypted, "
-            "rolling_avg_amount_w3/w5/w9, and select_amount_gt_5000");
+            "rolling_avg_amount_w3/w5/w9, and compare_amount_gt_5000");
     }
 
 #ifdef UTILITY_BENCH_WITH_OPENFHE
@@ -550,8 +550,8 @@ BenchmarkResult run_openfhe_ckks_benchmark(
             config);
     }
 
-    if (operation == "select_amount_gt_5000") {
-        return openfhe_ckks_select_amount_gt_5000(
+    if (operation == "compare_amount_gt_5000") {
+        return openfhe_ckks_compare_amount_gt_5000(
             data,
             thread_count,
             baseline.baseline_value,
