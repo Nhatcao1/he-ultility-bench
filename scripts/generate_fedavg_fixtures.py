@@ -76,6 +76,19 @@ FIXTURES = [
         ),
         include_nested_parameters=False,
     ),
+    FixtureSpec(
+        name="flat_10m_c4",
+        client_count=4,
+        example_counts=(800, 1200, 1600, 2400),
+        layers=(
+            LayerSpec("embedding_delta", (10000, 512)),
+            LayerSpec("encoder_delta", (2048, 1024)),
+            LayerSpec("adapter_delta", (2048, 1024)),
+            LayerSpec("head_delta", (1339, 512)),
+            LayerSpec("head_bias", (128,)),
+        ),
+        include_nested_parameters=False,
+    ),
 ]
 
 FIXTURE_BY_NAME = {spec.name: spec for spec in FIXTURES}
@@ -104,8 +117,14 @@ def parse_args() -> argparse.Namespace:
         choices=sorted(FIXTURE_BY_NAME),
         help=(
             "Fixture names to generate. Default: tiny_mlp_11_c2 mini_mlp_75_c4. "
-            "Use flat_100k_c4 or flat_1m_c4 for large benchmark runs."
+            "Use flat_100k_c4, flat_1m_c4, or flat_10m_c4 for large benchmark runs."
         ),
+    )
+    parser.add_argument(
+        "--stream-chunk-size",
+        type=int,
+        default=100000,
+        help="Number of flat parameters to generate per streaming chunk. Default: 100000.",
     )
     return parser.parse_args()
 
@@ -159,6 +178,23 @@ def make_client_flat(
     return base + trend + jitter
 
 
+def make_client_chunk(
+    rng: np.random.Generator,
+    param_count: int,
+    client_index: int,
+    start: int,
+    end: int,
+) -> np.ndarray:
+    if param_count == 1:
+        base = np.full(end - start, 0.25, dtype=np.float64)
+    else:
+        indices = np.arange(start, end, dtype=np.float64)
+        base = 0.25 + indices * ((2.50 - 0.25) / float(param_count - 1))
+    trend = (client_index + 1) * 0.125
+    jitter = rng.normal(loc=0.0, scale=0.015, size=end - start)
+    return base + trend + jitter
+
+
 def write_json(path: Path, data: dict[str, Any], *, pretty: bool = True) -> None:
     if pretty:
         path.write_text(json.dumps(data, indent=2) + "\n")
@@ -166,14 +202,126 @@ def write_json(path: Path, data: dict[str, Any], *, pretty: bool = True) -> None
         path.write_text(json.dumps(data, separators=(",", ":")) + "\n")
 
 
-def generate_fixture(spec: FixtureSpec, out_root: Path, seed: int) -> None:
+def write_number_chunk(output: Any, values: np.ndarray, first_value: bool) -> bool:
+    if values.size == 0:
+        return first_value
+    if not first_value:
+        output.write(",")
+    output.write(",".join(f"{float(value):.17g}" for value in values))
+    return False
+
+
+def generate_flat_streaming_fixture(
+    spec: FixtureSpec,
+    fixture_dir: Path,
+    layout: list[dict[str, Any]],
+    param_count: int,
+    seed: int,
+    chunk_size: int,
+) -> None:
+    if chunk_size <= 0:
+        raise ValueError("--stream-chunk-size must be positive")
+
+    rng = np.random.default_rng(seed + param_count + spec.client_count)
+    total_examples = sum(spec.example_counts)
+    global_flat = np.zeros(param_count, dtype=np.float64)
+
+    with (fixture_dir / "clients.json").open("w") as output:
+        output.write(
+            "{"
+            f"\"fixture_name\":\"{spec.name}\","
+            f"\"client_count\":{spec.client_count},"
+            f"\"param_count\":{param_count},"
+            f"\"total_examples\":{total_examples},"
+            "\"clients\":["
+        )
+
+        for client_index in range(spec.client_count):
+            if client_index > 0:
+                output.write(",")
+            client_id = f"client_{client_index + 1:03d}"
+            num_examples = spec.example_counts[client_index]
+            alpha = num_examples / total_examples
+            output.write(
+                "{"
+                f"\"client_id\":\"{client_id}\","
+                f"\"num_examples\":{num_examples},"
+                f"\"alpha\":{alpha:.17g},"
+                "\"parameters_flat\":["
+            )
+
+            first_value = True
+            for start in range(0, param_count, chunk_size):
+                end = min(start + chunk_size, param_count)
+                chunk = make_client_chunk(rng, param_count, client_index, start, end)
+                global_flat[start:end] += alpha * chunk
+                first_value = write_number_chunk(output, chunk, first_value)
+            output.write("]}")
+
+        output.write("]}\n")
+
+    with (fixture_dir / "expected_global.json").open("w") as output:
+        output.write(
+            "{"
+            f"\"fixture_name\":\"{spec.name}\","
+            f"\"param_count\":{param_count},"
+            "\"expected_global_flat\":["
+        )
+        first_value = True
+        for start in range(0, param_count, chunk_size):
+            end = min(start + chunk_size, param_count)
+            first_value = write_number_chunk(output, global_flat[start:end], first_value)
+        output.write("]}\n")
+
+
+def generate_fixture(spec: FixtureSpec, out_root: Path, seed: int, chunk_size: int) -> None:
     fixture_dir = out_root / spec.name
     fixture_dir.mkdir(parents=True, exist_ok=True)
 
     layout = build_layout(spec.layers)
     param_count = int(layout[-1]["end"])
-    rng = np.random.default_rng(seed + param_count + spec.client_count)
 
+    write_json(
+        fixture_dir / "layout.json",
+        {
+            "fixture_name": spec.name,
+            "param_count": param_count,
+            "layout": layout,
+        },
+    )
+
+    if not spec.include_nested_parameters:
+        generate_flat_streaming_fixture(
+            spec,
+            fixture_dir,
+            layout,
+            param_count,
+            seed,
+            chunk_size,
+        )
+        write_json(
+            fixture_dir / "README.json",
+            {
+                "purpose": "FedAvg merge fixture for plaintext and OpenFHE CKKS benchmarks.",
+                "param_count": param_count,
+                "client_count": spec.client_count,
+                "nested_parameters_included": False,
+                "stream_chunk_size": chunk_size,
+                "notes": [
+                    "clients.json is the generated client result package.",
+                    "expected_global.json is the correctness oracle.",
+                    "Large fixtures are flat-only to avoid duplicating huge tensor payloads.",
+                    "OpenFHE benchmark encrypts flattened chunks, serializes/deserializes ciphertexts, merges, decrypts, and compares.",
+                ],
+            },
+        )
+        print(
+            f"Generated {fixture_dir} "
+            f"clients={spec.client_count} params={param_count}"
+        )
+        return
+
+    rng = np.random.default_rng(seed + param_count + spec.client_count)
     total_examples = sum(spec.example_counts)
     clients = []
     global_flat = np.zeros(param_count, dtype=np.float64)
@@ -203,14 +351,6 @@ def generate_fixture(spec: FixtureSpec, out_root: Path, seed: int) -> None:
     if spec.include_nested_parameters:
         expected_doc["expected_global_parameters"] = unflatten(global_flat, layout)
 
-    write_json(
-        fixture_dir / "layout.json",
-        {
-            "fixture_name": spec.name,
-            "param_count": param_count,
-            "layout": layout,
-        },
-    )
     write_json(
         fixture_dir / "clients.json",
         {
@@ -249,7 +389,12 @@ def main() -> None:
     args = parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     for fixture_name in args.fixtures:
-        generate_fixture(FIXTURE_BY_NAME[fixture_name], args.out, args.seed)
+        generate_fixture(
+            FIXTURE_BY_NAME[fixture_name],
+            args.out,
+            args.seed,
+            args.stream_chunk_size,
+        )
     print(f"Saved FedAvg fixtures under: {args.out}")
 
 

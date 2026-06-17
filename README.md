@@ -90,8 +90,10 @@ For larger FedAvg timing fixtures:
 ```bash
 python3 scripts/generate_fedavg_fixtures.py --fixtures flat_100k_c4
 python3 scripts/generate_fedavg_fixtures.py --fixtures flat_1m_c4
+python3 scripts/generate_fedavg_fixtures.py --fixtures flat_10m_c4
 python3 scripts/test_fedavg_fixtures.py --fixtures flat_100k_c4
 python3 scripts/test_fedavg_fixtures.py --fixtures flat_1m_c4
+python3 scripts/test_fedavg_fixtures.py --fixtures flat_10m_c4
 ```
 
 Run the FedAvg benchmark:
@@ -133,6 +135,17 @@ Run larger FedAvg benchmarks across several OpenFHE thread settings:
   --ckks-scale-bits 50 \
   --ckks-first-mod-bits 60 \
   --results results/fedavg_results_1m_threads.csv
+
+./build/fedavg_bench \
+  --fixture data/generated_fedavg/flat_10m_c4 \
+  --backend all \
+  --threads 1 4 8 \
+  --ckks-ring-dim 0 \
+  --ckks-batch-size 0 \
+  --ckks-depth 1 \
+  --ckks-scale-bits 50 \
+  --ckks-first-mod-bits 60 \
+  --results results/fedavg_results_10m_threads.csv
 ```
 
 For CKKS aggregation, `tiny_1k` is only a smoke test. It can be smaller than the

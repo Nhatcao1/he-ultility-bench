@@ -33,6 +33,7 @@ Generate larger fixtures for meaningful OpenFHE timing:
 ```bash
 python3 scripts/generate_fedavg_fixtures.py --fixtures flat_100k_c4
 python3 scripts/generate_fedavg_fixtures.py --fixtures flat_1m_c4
+python3 scripts/generate_fedavg_fixtures.py --fixtures flat_10m_c4
 ```
 
 Validate fixture math without OpenFHE:
@@ -41,6 +42,7 @@ Validate fixture math without OpenFHE:
 python3 scripts/test_fedavg_fixtures.py
 python3 scripts/test_fedavg_fixtures.py --fixtures flat_100k_c4
 python3 scripts/test_fedavg_fixtures.py --fixtures flat_1m_c4
+python3 scripts/test_fedavg_fixtures.py --fixtures flat_10m_c4
 ```
 
 Fixture output layout:
@@ -67,6 +69,11 @@ data/generated_fedavg/
     clients.json
     expected_global.json
     README.json
+  flat_10m_c4/
+    layout.json
+    clients.json
+    expected_global.json
+    README.json
 ```
 
 The JSON files are the readable source fixtures. Ciphertext serialization is
@@ -84,6 +91,7 @@ file still records how the flat vector maps back to model-like layers.
 | `mini_mlp_75_c4` | 75 | 4 | Main debug fixture for flatten/chunk/merge/unflatten. |
 | `flat_100k_c4` | 100,000 | 4 | Medium FL-scale timing fixture. |
 | `flat_1m_c4` | 1,000,000 | 4 | Large FL-scale timing fixture. |
+| `flat_10m_c4` | 10,000,000 | 4 | Stress fixture for large encrypted model-update merge. |
 
 ## Benchmark Modes
 
@@ -103,18 +111,21 @@ clients.json
 clients.json
 -> read parameters_flat
 -> chunk by CKKS slots
--> encode chunks
--> encrypt chunks
--> serialize ciphertext chunks
--> deserialize ciphertext chunks
--> server weighted encrypted merge
--> decrypt global chunks
--> decode and remove padding
+-> for each chunk:
+   encode client chunk
+   encrypt client chunk
+   serialize ciphertext chunk
+   deserialize ciphertext chunk
+   server weighted encrypted merge
+   decrypt global chunk
+   decode and remove padding
 -> unflatten by layout
 -> compare against expected_global.json
 ```
 
 This first version assumes `num_examples` is public, so each `alpha_i` is public.
+The C++ path processes chunks as a pipeline so 10M-parameter tests do not keep
+every serialized and deserialized ciphertext in memory at the same time.
 
 ## Run
 
@@ -167,6 +178,26 @@ Run the 100k and 1M fixtures across several OpenFHE thread settings:
   --ckks-first-mod-bits 60 \
   --results results/fedavg_results_1m_threads.csv
 ```
+
+Run the 10M fixture:
+
+```bash
+./build/fedavg_bench \
+  --fixture data/generated_fedavg/flat_10m_c4 \
+  --backend all \
+  --threads 1 4 8 \
+  --ckks-ring-dim 0 \
+  --ckks-batch-size 0 \
+  --ckks-depth 1 \
+  --ckks-scale-bits 50 \
+  --ckks-first-mod-bits 60 \
+  --results results/fedavg_results_10m_threads.csv
+```
+
+`--ckks-batch-size 0` uses all available CKKS slots, normally `ring_dim / 2`.
+That is the recommended first run for large FedAvg vectors. If chunk count
+dominates, compare with a larger explicit ring dimension such as
+`--ckks-ring-dim 32768 --ckks-batch-size 0`.
 
 ## Metrics
 

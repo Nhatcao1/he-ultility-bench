@@ -329,50 +329,6 @@ FedAvgResult run_openfhe_fedavg(
     result.plain_payload_bytes =
         fixture.clients.size() * fixture.param_count * sizeof(double);
 
-    std::vector<std::vector<std::string>> serialized_by_client;
-    serialized_by_client.reserve(fixture.clients.size());
-
-    for (const auto& client : fixture.clients) {
-        std::vector<std::string> serialized_chunks;
-        serialized_chunks.reserve(result.chunks);
-
-        for (std::size_t offset = 0; offset < fixture.param_count; offset += result.slots) {
-            const std::size_t used = std::min(result.slots, fixture.param_count - offset);
-            std::vector<double> chunk(result.slots, 0.0);
-            for (std::size_t i = 0; i < used; ++i) {
-                chunk[i] = client.parameters_flat[offset + i];
-            }
-
-            const Timer encode_timer;
-            Plaintext plaintext = cc->MakeCKKSPackedPlaintext(chunk);
-            result.encode_time_ms += encode_timer.elapsed_ms();
-
-            const Timer encrypt_timer;
-            auto ciphertext = cc->Encrypt(keys.publicKey, plaintext);
-            result.encrypt_time_ms += encrypt_timer.elapsed_ms();
-
-            const Timer serialize_timer;
-            serialized_chunks.push_back(serialize_ciphertext_to_string(ciphertext));
-            result.serialize_time_ms += serialize_timer.elapsed_ms();
-            result.serialized_ciphertext_bytes += serialized_chunks.back().size();
-        }
-
-        serialized_by_client.push_back(std::move(serialized_chunks));
-    }
-
-    std::vector<std::vector<Ciphertext<DCRTPoly>>> ciphertext_by_client;
-    ciphertext_by_client.reserve(serialized_by_client.size());
-    for (const auto& serialized_chunks : serialized_by_client) {
-        std::vector<Ciphertext<DCRTPoly>> chunks;
-        chunks.reserve(serialized_chunks.size());
-        for (const auto& serialized : serialized_chunks) {
-            const Timer deserialize_timer;
-            chunks.push_back(deserialize_ciphertext_from_string(serialized));
-            result.deserialize_time_ms += deserialize_timer.elapsed_ms();
-        }
-        ciphertext_by_client.push_back(std::move(chunks));
-    }
-
     std::vector<double> client_alphas;
     client_alphas.reserve(fixture.clients.size());
     for (const auto& client : fixture.clients) {
@@ -381,38 +337,57 @@ FedAvgResult run_openfhe_fedavg(
             static_cast<double>(fixture.total_examples));
     }
 
-    std::vector<Ciphertext<DCRTPoly>> global_chunks;
-    global_chunks.reserve(result.chunks);
-    const Timer merge_timer;
+    std::vector<double> decoded_flat;
+    decoded_flat.reserve(result.chunks * result.slots);
     for (std::size_t chunk_index = 0; chunk_index < result.chunks; ++chunk_index) {
+        const std::size_t offset = chunk_index * result.slots;
+        const std::size_t used = std::min(result.slots, fixture.param_count - offset);
         bool has_chunk = false;
         Ciphertext<DCRTPoly> global_chunk;
+
         for (std::size_t client_index = 0; client_index < fixture.clients.size(); ++client_index) {
-            auto weighted = cc->EvalMult(
-                ciphertext_by_client[client_index][chunk_index],
-                client_alphas[client_index]);
+            std::vector<double> chunk(result.slots, 0.0);
+            const auto& client_flat = fixture.clients[client_index].parameters_flat;
+            for (std::size_t i = 0; i < used; ++i) {
+                chunk[i] = client_flat[offset + i];
+            }
+
+            const Timer encode_timer;
+            Plaintext input_plaintext = cc->MakeCKKSPackedPlaintext(chunk);
+            result.encode_time_ms += encode_timer.elapsed_ms();
+
+            const Timer encrypt_timer;
+            auto encrypted_chunk = cc->Encrypt(keys.publicKey, input_plaintext);
+            result.encrypt_time_ms += encrypt_timer.elapsed_ms();
+
+            const Timer serialize_timer;
+            const std::string serialized = serialize_ciphertext_to_string(encrypted_chunk);
+            result.serialize_time_ms += serialize_timer.elapsed_ms();
+            result.serialized_ciphertext_bytes += serialized.size();
+
+            const Timer deserialize_timer;
+            auto deserialized_chunk = deserialize_ciphertext_from_string(serialized);
+            result.deserialize_time_ms += deserialize_timer.elapsed_ms();
+
+            const Timer merge_timer;
+            auto weighted = cc->EvalMult(deserialized_chunk, client_alphas[client_index]);
             if (has_chunk) {
                 global_chunk = cc->EvalAdd(global_chunk, weighted);
             } else {
                 global_chunk = weighted;
                 has_chunk = true;
             }
+            result.he_merge_time_ms += merge_timer.elapsed_ms();
         }
-        global_chunks.push_back(global_chunk);
-    }
-    result.he_merge_time_ms = merge_timer.elapsed_ms();
 
-    std::vector<double> decoded_flat;
-    decoded_flat.reserve(result.chunks * result.slots);
-    for (const auto& chunk : global_chunks) {
-        Plaintext plaintext;
+        Plaintext output_plaintext;
         const Timer decrypt_timer;
-        cc->Decrypt(keys.secretKey, chunk, &plaintext);
+        cc->Decrypt(keys.secretKey, global_chunk, &output_plaintext);
         result.decrypt_time_ms += decrypt_timer.elapsed_ms();
 
         const Timer decode_timer;
-        plaintext->SetLength(result.slots);
-        const auto values = plaintext->GetRealPackedValue();
+        output_plaintext->SetLength(result.slots);
+        const auto values = output_plaintext->GetRealPackedValue();
         decoded_flat.insert(decoded_flat.end(), values.begin(), values.end());
         result.decode_time_ms += decode_timer.elapsed_ms();
     }
@@ -432,9 +407,9 @@ FedAvgResult run_openfhe_fedavg(
         result.decode_time_ms;
     result.notes =
 #ifdef _OPENMP
-        "fedavg_json_fixture;server_weighted;ciphertext_serialized_in_memory;public_num_examples;he_total_excludes_json_load_and_unflatten;omp_set_num_threads";
+        "fedavg_json_fixture;server_weighted;chunk_pipeline;ciphertext_serialized_in_memory;public_num_examples;he_total_excludes_json_load_and_unflatten;omp_set_num_threads";
 #else
-        "fedavg_json_fixture;server_weighted;ciphertext_serialized_in_memory;public_num_examples;he_total_excludes_json_load_and_unflatten;openmp_not_seen_by_runner";
+        "fedavg_json_fixture;server_weighted;chunk_pipeline;ciphertext_serialized_in_memory;public_num_examples;he_total_excludes_json_load_and_unflatten;openmp_not_seen_by_runner";
 #endif
     return result;
 }
