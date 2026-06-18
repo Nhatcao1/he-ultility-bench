@@ -163,6 +163,7 @@ encrypted amount vector
   -> EvalRotate by 2
   -> EvalAdd original + rotated vectors
   -> EvalMult by plaintext mask 1/3
+  -> ModReduceInPlace after mask multiplication
   -> encrypted rolling average vector
   -> EvalSum rolling outputs
   -> decrypt scalar checksum
@@ -180,6 +181,7 @@ amount column
   -> EvalRotate by 1 and 2
   -> EvalAdd original + rotated vectors
   -> EvalMult by plaintext 1/3 mask
+  -> ModReduceInPlace after mask multiplication
   -> decrypt rolling-average vector directly
   -> compare each rolling_i against C++ rolling_i
 ```
@@ -205,6 +207,7 @@ encrypted amount
   -> EvalRotate by 1, 2, 3, 4
   -> add all shifted vectors
   -> multiply by plaintext 1/5 mask
+  -> ModReduceInPlace after mask multiplication
   -> EvalSum rolling outputs
   -> decrypt scalar result
 ```
@@ -233,6 +236,7 @@ encrypted amount
   -> EvalRotate by 1, 2, 3, 4, 5, 6, 7, 8
   -> add all shifted vectors
   -> multiply by plaintext 1/9 mask
+  -> ModReduceInPlace after mask multiplication
   -> EvalSum rolling outputs
   -> decrypt scalar result
 ```

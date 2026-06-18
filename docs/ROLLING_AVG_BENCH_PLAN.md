@@ -175,6 +175,9 @@ EvalMult with plaintext mask:
   [1/3, 1/3, 1/3, ..., 0, 0]
         |
         v
+ModReduceInPlace after mask multiplication
+        |
+        v
 encrypted rolling averages
         |
         v
@@ -252,12 +255,15 @@ the result.
 | Rotate | `EvalRotate` | Main cost being tested. |
 | Add rotations | `EvalAdd` | Adds rotated ciphertexts. |
 | Divide by window | `EvalMult` with plaintext mask | Multiplies by `1/window`; no encrypted division. |
+| Reduce after mask | `ModReduceInPlace` | Required after plaintext mask multiplication, following OpenFHE masking examples. |
 | Chunk checksum | `EvalSum` | Sums masked rolling-average slots over a power-of-two length. |
 | Chunk accumulation | `EvalAdd` | Adds chunk checksums. |
 | Decrypt | `Decrypt` | Decrypts one scalar checksum before final reporting normalization. |
 
 No bootstrapping is used. Rolling average is shallow in multiplicative depth;
-it is mainly a rotation and packing benchmark.
+it is mainly a rotation and packing benchmark. The code enforces minimum CKKS
+depth `2` for rolling paths because the plaintext average mask multiplication
+still consumes level/scale budget after rotations.
 
 ## Benchmarks
 
@@ -303,7 +309,7 @@ rm -f results/benchmark_results_rolling_avg_100k.csv
   --threads 1 4 8 \
   --ckks-ring-dim 0 \
   --ckks-batch-size 0 \
-  --ckks-depth 1 \
+  --ckks-depth 2 \
   --ckks-scale-bits 50 \
   --ckks-first-mod-bits 60 \
   --results results/benchmark_results_rolling_avg_100k.csv
@@ -320,7 +326,7 @@ If the full-slot run is too slow, try smaller `--max-rows` first:
   --max-rows 10000 \
   --ckks-ring-dim 0 \
   --ckks-batch-size 0 \
-  --ckks-depth 1 \
+  --ckks-depth 2 \
   --ckks-scale-bits 50 \
   --ckks-first-mod-bits 60 \
   --results results/benchmark_results_rolling_avg_10k.csv
@@ -345,7 +351,7 @@ rm -f results/benchmark_results_rolling_vector_100k.csv
   --threads 1 4 8 \
   --ckks-ring-dim 0 \
   --ckks-batch-size 0 \
-  --ckks-depth 1 \
+  --ckks-depth 2 \
   --ckks-scale-bits 50 \
   --ckks-first-mod-bits 60 \
   --results results/benchmark_results_rolling_vector_100k.csv

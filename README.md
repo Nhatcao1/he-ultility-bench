@@ -279,7 +279,7 @@ rm -f results/benchmark_results_rolling_avg_100k.csv
   --threads 1 4 8 \
   --ckks-ring-dim 0 \
   --ckks-batch-size 0 \
-  --ckks-depth 1 \
+  --ckks-depth 2 \
   --ckks-scale-bits 50 \
   --ckks-first-mod-bits 60 \
   --results results/benchmark_results_rolling_avg_100k.csv
@@ -314,7 +314,7 @@ rm -f results/benchmark_results_rolling_vector_100k.csv
   --threads 1 4 8 \
   --ckks-ring-dim 0 \
   --ckks-batch-size 0 \
-  --ckks-depth 1 \
+  --ckks-depth 2 \
   --ckks-scale-bits 50 \
   --ckks-first-mod-bits 60 \
   --results results/benchmark_results_rolling_vector_100k.csv

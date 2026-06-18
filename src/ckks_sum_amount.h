@@ -404,7 +404,7 @@ inline BenchmarkResult openfhe_ckks_rolling_avg_amount(
 
     CkksSumConfig rolling_config = config;
     rolling_config.multiplicative_depth =
-        std::max<std::size_t>(rolling_config.multiplicative_depth, 1);
+        std::max<std::size_t>(rolling_config.multiplicative_depth, 2);
 
     const std::size_t openfhe_threads = configure_openfhe_threads(thread_count);
 
@@ -487,8 +487,10 @@ inline BenchmarkResult openfhe_ckks_rolling_avg_amount(
         }
 
         const Timer encode_timer;
-        Plaintext amount_plaintext = cc->MakeCKKSPackedPlaintext(packed_amount);
-        Plaintext average_mask_plaintext = cc->MakeCKKSPackedPlaintext(average_mask);
+        Plaintext amount_plaintext = cc->MakeCKKSPackedPlaintext(
+            packed_amount, 1, 0, nullptr, static_cast<uint32_t>(slots_per_ciphertext));
+        Plaintext average_mask_plaintext = cc->MakeCKKSPackedPlaintext(
+            average_mask, 1, 0, nullptr, static_cast<uint32_t>(slots_per_ciphertext));
         encode_time_ms += encode_timer.elapsed_ms();
 
         const Timer encrypt_timer;
@@ -503,6 +505,7 @@ inline BenchmarkResult openfhe_ckks_rolling_avg_amount(
                 cc->EvalRotate(amount_ciphertext, static_cast<int32_t>(offset)));
         }
         auto rolling_average = cc->EvalMult(rolling_sum, average_mask_plaintext);
+        cc->ModReduceInPlace(rolling_average);
         auto chunk_sum = cc->EvalSum(rolling_average, static_cast<uint32_t>(eval_sum_slots));
         if (has_total) {
             total_ciphertext = cc->EvalAdd(total_ciphertext, chunk_sum);
@@ -607,7 +610,7 @@ inline BenchmarkResult openfhe_ckks_rolling_avg_amount_vector_check(
 
     CkksSumConfig rolling_config = config;
     rolling_config.multiplicative_depth =
-        std::max<std::size_t>(rolling_config.multiplicative_depth, 1);
+        std::max<std::size_t>(rolling_config.multiplicative_depth, 2);
 
     const std::size_t openfhe_threads = configure_openfhe_threads(thread_count);
 
@@ -685,8 +688,10 @@ inline BenchmarkResult openfhe_ckks_rolling_avg_amount_vector_check(
         }
 
         const Timer encode_timer;
-        Plaintext amount_plaintext = cc->MakeCKKSPackedPlaintext(packed_amount);
-        Plaintext average_mask_plaintext = cc->MakeCKKSPackedPlaintext(average_mask);
+        Plaintext amount_plaintext = cc->MakeCKKSPackedPlaintext(
+            packed_amount, 1, 0, nullptr, static_cast<uint32_t>(slots_per_ciphertext));
+        Plaintext average_mask_plaintext = cc->MakeCKKSPackedPlaintext(
+            average_mask, 1, 0, nullptr, static_cast<uint32_t>(slots_per_ciphertext));
         encode_time_ms += encode_timer.elapsed_ms();
 
         const Timer encrypt_timer;
@@ -701,6 +706,7 @@ inline BenchmarkResult openfhe_ckks_rolling_avg_amount_vector_check(
                 cc->EvalRotate(amount_ciphertext, static_cast<int32_t>(offset)));
         }
         auto rolling_average = cc->EvalMult(rolling_sum, average_mask_plaintext);
+        cc->ModReduceInPlace(rolling_average);
         he_eval_time_ms += eval_timer.elapsed_ms();
 
         Plaintext rolling_average_plaintext;
