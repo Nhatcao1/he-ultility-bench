@@ -9,6 +9,7 @@ OpenFHE CKKS packed `EvalSum` implementation.
 - [Encrypted comparison next steps](docs/ENCRYPTED_COMPARISON_NEXT_STEPS.md)
 - [FedAvg merge benchmark](docs/FEDAVG_BENCH_PLAN.md)
 - [Polynomial ML CKKS benchmark](docs/POLY_ML_BENCH_PLAN.md)
+- [Dense 4x8 layer benchmark](docs/DENSE_LAYER_BENCH_PLAN.md)
 - [Rolling average CKKS benchmark](docs/ROLLING_AVG_BENCH_PLAN.md)
 - [PSI + OpenFHE join plan](docs/PSI_OPENFHE_JOIN_PLAN.md)
 - [PSI install notes](docs/PSI_INSTALL.md)
@@ -98,6 +99,33 @@ python3 scripts/generate_fedavg_fixtures.py --fixtures flat_10m_c4
 python3 scripts/test_fedavg_fixtures.py --fixtures flat_100k_c4
 python3 scripts/test_fedavg_fixtures.py --fixtures flat_1m_c4
 python3 scripts/test_fedavg_fixtures.py --fixtures flat_10m_c4
+```
+
+For dense-layer matrix fixtures:
+
+```bash
+python3 scripts/generate_dense_layer_data.py \
+  --sizes 1000 100000 1000000 \
+  --out data/generated_dense \
+  --seed 42 \
+  --chunk-size 100000
+```
+
+Run the dense 4x8 layer benchmark:
+
+```bash
+rm -f results/dense_layer_100k.csv
+
+./build/dense_layer_bench \
+  --fixture data/generated_dense/dense4x8_100k \
+  --backend all \
+  --threads 1 4 8 \
+  --ckks-ring-dim 0 \
+  --ckks-batch-size 0 \
+  --ckks-depth 2 \
+  --ckks-scale-bits 50 \
+  --ckks-first-mod-bits 60 \
+  --results results/dense_layer_100k.csv
 ```
 
 Run the FedAvg benchmark:

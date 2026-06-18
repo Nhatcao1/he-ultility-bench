@@ -14,6 +14,8 @@ data/*.npy
 data/**/*.npy
 data/*.npz
 data/**/*.npz
+data/*.json
+data/**/*.json
 data/*.bin
 data/**/*.bin
 data/*.arrow

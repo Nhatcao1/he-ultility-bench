@@ -357,6 +357,53 @@ encrypted z
 
 This measures the cost of CKKS bootstrapping plus the degree-9 polynomial.
 
+## Dense 4x8 Layer Benchmark
+
+This is run by `dense_layer_bench`.
+
+Math:
+
+```text
+Y = X @ W + b
+
+X: rows x 4
+W: 4 x 8
+b: 8
+Y: rows x 8
+```
+
+Plain baseline:
+
+```text
+for each row:
+  for each output neuron:
+    y[row][out] = bias[out]
+    for each input feature:
+      y[row][out] += x[row][in] * W[in][out]
+```
+
+HE behind the scenes:
+
+```text
+x0, x1, x2, x3 feature columns
+  -> pack each column into CKKS slots
+  -> encrypt each feature column
+
+for each output neuron j:
+  ct_yj =
+      EvalMult(ct_x0, W[0][j])
+    + EvalMult(ct_x1, W[1][j])
+    + EvalMult(ct_x2, W[2][j])
+    + EvalMult(ct_x3, W[3][j])
+    + plaintext bias[j]
+
+  decrypt output vector
+  compare every y[row][j] against C++ baseline
+```
+
+This is a small dense neural-network layer. It is matrix-vector/matrix-output
+inference over encrypted input data with plaintext model weights.
+
 ## Federated Averaging Benchmark
 
 This is run by `fedavg_bench`.
@@ -403,6 +450,7 @@ decrypt.
 | Packed SIMD addition | `sum_amount`, rolling average, FedAvg |
 | Ciphertext-plaintext multiplication | `weighted_sum_amount_risk`, rolling average mask, polynomial coefficients, FedAvg alpha |
 | Ciphertext-ciphertext multiplication | `weighted_sum_amount_risk_encrypted`, polynomial powers |
+| Dense layer matrix math | `dense_layer_bench` |
 | Slot rotations | `rolling_avg_amount_w3/w5/w9` |
 | Slot reduction / aggregation | `sum_amount`, weighted sums, rolling average scalar result, polynomial scores |
 | Scheme-switching comparison | `compare_amount_gt_5000` |
