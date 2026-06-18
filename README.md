@@ -292,6 +292,32 @@ rolling_avg_amount_w3
 rolling_avg_amount_w5
 rolling_avg_amount_w9
 all_rolling
+rolling_avg_vector_w3
+rolling_avg_vector_w5
+rolling_avg_vector_w9
+all_rolling_vector
+```
+
+`rolling_avg_amount_w*` is the Schema B scalar-summary path: rolling vector
+plus encrypted `EvalSum`. `rolling_avg_vector_w*` is the Schema A diagnostic
+path: decrypt the rolling vector directly and compute the reported mean after
+decode, with no `EvalSum`.
+
+Schema A command for checking the rolling-vector math first:
+
+```bash
+rm -f results/benchmark_results_rolling_vector_100k.csv
+./build/utility_bench \
+  --data data/generated/medium_100k/transactions.csv \
+  --bench all_rolling_vector \
+  --backend all \
+  --threads 1 4 8 \
+  --ckks-ring-dim 0 \
+  --ckks-batch-size 0 \
+  --ckks-depth 1 \
+  --ckks-scale-bits 50 \
+  --ckks-first-mod-bits 60 \
+  --results results/benchmark_results_rolling_vector_100k.csv
 ```
 
 For the all-encrypted numeric version, use:

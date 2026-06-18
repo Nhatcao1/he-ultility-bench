@@ -21,7 +21,7 @@ rolling_avg_amount_w3:
   ]
 ```
 
-The result CSV stores the mean of the rolling-average output vector:
+The current result CSV stores the mean of the rolling-average output vector:
 
 ```text
 AVG(all rolling-average outputs)
@@ -29,6 +29,110 @@ AVG(all rolling-average outputs)
 
 That keeps the existing result schema while avoiding a giant row-count-scaled
 checksum that looks wrong on large datasets.
+
+## Schema A vs Schema B
+
+The rolling average can be tested in two useful ways.
+
+### Schema A: Rolling Vector Correctness
+
+Schema A tests only the rolling-average operation itself.
+
+```text
+encrypted amount
+        |
+        v
+EvalRotate + EvalAdd
+        |
+        v
+EvalMult by plaintext 1/window mask
+        |
+        v
+encrypted rolling-average vector
+        |
+        v
+decrypt vector
+        |
+        v
+compare rolling_i values against plain C++
+```
+
+Output shape:
+
+```text
+[rolling_0, rolling_1, rolling_2, ...]
+```
+
+What it answers:
+
+```text
+Are rotations, overlap packing, and division-by-window correct?
+```
+
+What it avoids:
+
+```text
+No EvalSum.
+No scalar checksum.
+No final "mean of rolling averages" reporting step.
+```
+
+This is the best next diagnostic path because failed runs show the scalar HE
+result near zero while the plain result is around `5003`. That failure can come
+from the reduction/reporting path, so we should verify the vector before blaming
+the rolling math.
+
+### Schema B: Scalar Summary
+
+Schema B is the currently implemented benchmark.
+
+```text
+encrypted amount
+        |
+        v
+encrypted rolling-average vector
+        |
+        v
+EvalSum rolling outputs
+        |
+        v
+encrypted scalar checksum
+        |
+        v
+decrypt scalar
+        |
+        v
+divide by output row count
+```
+
+Output shape:
+
+```text
+single scalar = mean(all rolling_i)
+```
+
+What it answers:
+
+```text
+What is the full cost of rolling average plus encrypted reduction?
+```
+
+Current concern:
+
+```text
+The reported HE scalar result has been effectively zero in server runs.
+That means Schema B is not yet trustworthy for correctness.
+Schema A exists to isolate the problem.
+```
+
+Implemented Schema A benchmark names:
+
+```text
+rolling_avg_vector_w3
+rolling_avg_vector_w5
+rolling_avg_vector_w9
+all_rolling_vector
+```
 
 ## CKKS Flow
 
@@ -162,6 +266,10 @@ rolling_avg_amount_w3
 rolling_avg_amount_w5
 rolling_avg_amount_w9
 all_rolling
+rolling_avg_vector_w3
+rolling_avg_vector_w5
+rolling_avg_vector_w9
+all_rolling_vector
 ```
 
 Larger windows create more explicit rotations:
@@ -174,6 +282,9 @@ w9 -> 8 rotations per ciphertext chunk before EvalSum
 
 `rotation_count_reported` also includes a simple estimate for the rotations
 used by `EvalSum`.
+
+For Schema A vector checks, `rotation_count_reported` includes only the explicit
+rolling-window rotations. There is no `EvalSum` in that path.
 
 ## Server Command
 
@@ -213,4 +324,36 @@ If the full-slot run is too slow, try smaller `--max-rows` first:
   --ckks-scale-bits 50 \
   --ckks-first-mod-bits 60 \
   --results results/benchmark_results_rolling_avg_10k.csv
+```
+
+## Schema A Server Command
+
+Run this before trusting the scalar-summary path:
+
+```bash
+cd ~/he-ultility-bench
+git pull
+
+cmake --build build --parallel "$(nproc)"
+
+rm -f results/benchmark_results_rolling_vector_100k.csv
+
+./build/utility_bench \
+  --data data/generated/medium_100k/transactions.csv \
+  --bench all_rolling_vector \
+  --backend all \
+  --threads 1 4 8 \
+  --ckks-ring-dim 0 \
+  --ckks-batch-size 0 \
+  --ckks-depth 1 \
+  --ckks-scale-bits 50 \
+  --ckks-first-mod-bits 60 \
+  --results results/benchmark_results_rolling_vector_100k.csv
+```
+
+Expected result:
+
+```text
+result_value should be close to baseline_value, around the normal amount scale
+of roughly 5000 for generated data.
 ```
