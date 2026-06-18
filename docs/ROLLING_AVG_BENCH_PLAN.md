@@ -37,6 +37,7 @@ transactions.amount
         |
         v
 Pack overlapping amount values into CKKS slots
+using a power-of-two output block
         |
         v
 Encrypt amount vector
@@ -74,6 +75,7 @@ encrypted rolling averages
         |
         v
 EvalSum valid output slots
+using a power-of-two reduction length
         |
         v
 encrypted checksum for this chunk
@@ -114,6 +116,29 @@ valid outputs:
 
 The overlap values are read by rotations but are not output positions.
 
+## Power-Of-Two Reduction Blocks
+
+OpenFHE packed reductions are most reliable with power-of-two slot shapes.
+The benchmark therefore does not use every possible output slot in each
+ciphertext. Instead, it chooses:
+
+```text
+output_slots_per_ciphertext =
+  largest power of two <= slots_per_ciphertext - (window_size - 1)
+```
+
+For example, with `8192` slots and `w3`:
+
+```text
+slots_per_ciphertext - overlap = 8192 - 2 = 8190
+output_slots_per_ciphertext = 4096
+```
+
+That gives lower slot utilization, but the `EvalSum` reduction length is a
+clean power of two. The final partial chunk is also padded and masked so
+`EvalSum` sees a power-of-two length while only real output rows contribute to
+the result.
+
 ## HE Operations Used
 
 | Stage | OpenFHE operation | Notes |
@@ -123,7 +148,7 @@ The overlap values are read by rotations but are not output positions.
 | Rotate | `EvalRotate` | Main cost being tested. |
 | Add rotations | `EvalAdd` | Adds rotated ciphertexts. |
 | Divide by window | `EvalMult` with plaintext mask | Multiplies by `1/window`; no encrypted division. |
-| Chunk checksum | `EvalSum` | Sums valid rolling-average slots. |
+| Chunk checksum | `EvalSum` | Sums masked rolling-average slots over a power-of-two length. |
 | Chunk accumulation | `EvalAdd` | Adds chunk checksums. |
 | Decrypt | `Decrypt` | Decrypts one scalar checksum before final reporting normalization. |
 

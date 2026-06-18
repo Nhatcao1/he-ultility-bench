@@ -64,6 +64,30 @@ inline std::size_t ceil_log2_nonzero(std::size_t value) {
     return rotations;
 }
 
+inline std::size_t floor_power_of_two(std::size_t value) {
+    if (value == 0) {
+        return 0;
+    }
+
+    std::size_t result = 1;
+    while (result <= value / 2) {
+        result *= 2;
+    }
+    return result;
+}
+
+inline std::size_t ceil_power_of_two(std::size_t value) {
+    if (value <= 1) {
+        return 1;
+    }
+
+    std::size_t result = 1;
+    while (result < value) {
+        result *= 2;
+    }
+    return result;
+}
+
 inline std::size_t configure_openfhe_threads(std::size_t requested_threads) {
 #ifdef _OPENMP
     omp_set_num_threads(static_cast<int>(requested_threads));
@@ -425,7 +449,10 @@ inline BenchmarkResult openfhe_ckks_rolling_avg_amount(
 
     const std::size_t output_rows = data.size() - window_size + 1;
     const std::size_t output_slots_per_ciphertext =
-        slots_per_ciphertext - (window_size - 1);
+        floor_power_of_two(slots_per_ciphertext - (window_size - 1));
+    if (output_slots_per_ciphertext == 0) {
+        throw std::runtime_error("rolling average has no usable power-of-two output slots");
+    }
     const std::size_t ciphertext_count = ceil_div(output_rows, output_slots_per_ciphertext);
     std::size_t used_slots_last_ciphertext = 0;
     std::size_t total_input_slots_packed = 0;
@@ -442,14 +469,17 @@ inline BenchmarkResult openfhe_ckks_rolling_avg_amount(
          output_offset += output_slots_per_ciphertext) {
         const std::size_t valid_outputs =
             std::min(output_slots_per_ciphertext, output_rows - output_offset);
-        const std::size_t input_slots = valid_outputs + window_size - 1;
+        const std::size_t eval_sum_slots = ceil_power_of_two(valid_outputs);
+        const std::size_t input_slots = eval_sum_slots + window_size - 1;
+        const std::size_t available_input_rows = data.size() - output_offset;
+        const std::size_t input_rows_to_copy = std::min(input_slots, available_input_rows);
         total_input_slots_packed += input_slots;
         used_slots_last_ciphertext = input_slots;
-        rotation_count_estimate += (window_size - 1) + ceil_log2_nonzero(valid_outputs);
+        rotation_count_estimate += (window_size - 1) + ceil_log2_nonzero(eval_sum_slots);
 
         std::vector<double> packed_amount(slots_per_ciphertext, 0.0);
         std::vector<double> average_mask(slots_per_ciphertext, 0.0);
-        for (std::size_t i = 0; i < input_slots; ++i) {
+        for (std::size_t i = 0; i < input_rows_to_copy; ++i) {
             packed_amount[i] = data.amount[output_offset + i];
         }
         for (std::size_t i = 0; i < valid_outputs; ++i) {
@@ -473,7 +503,7 @@ inline BenchmarkResult openfhe_ckks_rolling_avg_amount(
                 cc->EvalRotate(amount_ciphertext, static_cast<int32_t>(offset)));
         }
         auto rolling_average = cc->EvalMult(rolling_sum, average_mask_plaintext);
-        auto chunk_sum = cc->EvalSum(rolling_average, static_cast<uint32_t>(valid_outputs));
+        auto chunk_sum = cc->EvalSum(rolling_average, static_cast<uint32_t>(eval_sum_slots));
         if (has_total) {
             total_ciphertext = cc->EvalAdd(total_ciphertext, chunk_sum);
         } else {

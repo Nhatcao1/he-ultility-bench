@@ -267,6 +267,8 @@ Rolling average, using CKKS rotations over `amount`:
 `result_value` and `baseline_value` are the mean of all rolling-average outputs,
 not the row-count-scaled checksum. Remove old rolling result CSVs before
 rerunning after this change.
+The rolling implementation uses power-of-two output blocks for `EvalSum`, so
+slot utilization can be lower than the simple aggregate benchmarks.
 
 ```bash
 rm -f results/benchmark_results_rolling_avg_100k.csv
