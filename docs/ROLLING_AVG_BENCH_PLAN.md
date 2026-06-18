@@ -21,14 +21,14 @@ rolling_avg_amount_w3:
   ]
 ```
 
-The result CSV stores a scalar checksum:
+The result CSV stores the mean of the rolling-average output vector:
 
 ```text
-SUM(all rolling-average outputs)
+AVG(all rolling-average outputs)
 ```
 
-That keeps the existing result schema while still checking the full output
-vector against the C++ baseline.
+That keeps the existing result schema while avoiding a giant row-count-scaled
+checksum that looks wrong on large datasets.
 
 ## CKKS Flow
 
@@ -47,7 +47,7 @@ ct0 = Enc([a0, a1, a2, a3, ...])
         +----------------------------+
         |                            |
         v                            v
-EvalAtIndex(ct0, 1)          EvalAtIndex(ct0, 2)
+EvalRotate(ct0, 1)           EvalRotate(ct0, 2)
 rotate left by 1             rotate left by 2
         |                            |
         +-------------+--------------+
@@ -82,7 +82,10 @@ encrypted checksum for this chunk
 EvalAdd chunk checksums
         |
         v
-Decrypt one final checksum
+Decrypt final checksum
+        |
+        v
+Divide by output row count for CSV result_value
 ```
 
 ## Why Overlap Packing
@@ -117,12 +120,12 @@ The overlap values are read by rotations but are not output positions.
 | --- | --- | --- |
 | Pack | `MakeCKKSPackedPlaintext` | Outside HE math, timed as encode. |
 | Encrypt | `Encrypt` | Encrypts the amount vector. |
-| Rotate | `EvalAtIndex` | Main cost being tested. |
+| Rotate | `EvalRotate` | Main cost being tested. |
 | Add rotations | `EvalAdd` | Adds rotated ciphertexts. |
 | Divide by window | `EvalMult` with plaintext mask | Multiplies by `1/window`; no encrypted division. |
 | Chunk checksum | `EvalSum` | Sums valid rolling-average slots. |
 | Chunk accumulation | `EvalAdd` | Adds chunk checksums. |
-| Decrypt | `Decrypt` | Decrypts one scalar checksum. |
+| Decrypt | `Decrypt` | Decrypts one scalar checksum before final reporting normalization. |
 
 No bootstrapping is used. Rolling average is shallow in multiplicative depth;
 it is mainly a rotation and packing benchmark.

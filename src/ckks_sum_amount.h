@@ -412,7 +412,7 @@ inline BenchmarkResult openfhe_ckks_rolling_avg_amount(
     for (std::size_t offset = 1; offset < window_size; ++offset) {
         rotation_indices.push_back(static_cast<int32_t>(offset));
     }
-    cc->EvalAtIndexKeyGen(keys.secretKey, rotation_indices);
+    cc->EvalRotateKeyGen(keys.secretKey, rotation_indices);
     const double setup_time_ms = setup_timer.elapsed_ms();
 
     const std::size_t actual_ring_dimension = cc->GetRingDimension();
@@ -470,7 +470,7 @@ inline BenchmarkResult openfhe_ckks_rolling_avg_amount(
         for (std::size_t offset = 1; offset < window_size; ++offset) {
             rolling_sum = cc->EvalAdd(
                 rolling_sum,
-                cc->EvalAtIndex(amount_ciphertext, static_cast<int32_t>(offset)));
+                cc->EvalRotate(amount_ciphertext, static_cast<int32_t>(offset)));
         }
         auto rolling_average = cc->EvalMult(rolling_sum, average_mask_plaintext);
         auto chunk_sum = cc->EvalSum(rolling_average, static_cast<uint32_t>(valid_outputs));
@@ -494,7 +494,9 @@ inline BenchmarkResult openfhe_ckks_rolling_avg_amount(
     if (decoded_values.empty()) {
         throw std::runtime_error("OpenFHE CKKS rolling average decrypt produced no values");
     }
-    const double result_value = decoded_values[0].real();
+    const double rolling_average_checksum = decoded_values[0].real();
+    const double result_value =
+        rolling_average_checksum / static_cast<double>(output_rows);
     const double decode_time_ms = decode_timer.elapsed_ms();
 
     const double total_he_time_ms =
@@ -540,9 +542,9 @@ inline BenchmarkResult openfhe_ckks_rolling_avg_amount(
     result.rotation_count_reported = rotation_count_estimate;
     result.notes =
 #ifdef _OPENMP
-        "compute_only_no_io;rolling_avg_forward_window;amount_encrypted;overlap_packing_for_chunk_boundaries;eval_at_index_rotations;plaintext_average_mask;no_bootstrap;plain_time_reused_from_same_run_baseline;omp_set_num_threads;setup_recorded_separately;encrypt_decrypt_in_total";
+        "compute_only_no_io;rolling_avg_forward_window;result_is_mean_of_rolling_outputs;amount_encrypted;overlap_packing_for_chunk_boundaries;eval_rotate_rotations;plaintext_average_mask;no_bootstrap;plain_time_reused_from_same_run_baseline;omp_set_num_threads;setup_recorded_separately;encrypt_decrypt_in_total";
 #else
-        "compute_only_no_io;rolling_avg_forward_window;amount_encrypted;overlap_packing_for_chunk_boundaries;eval_at_index_rotations;plaintext_average_mask;no_bootstrap;plain_time_reused_from_same_run_baseline;openmp_not_seen_by_runner;setup_recorded_separately;encrypt_decrypt_in_total";
+        "compute_only_no_io;rolling_avg_forward_window;result_is_mean_of_rolling_outputs;amount_encrypted;overlap_packing_for_chunk_boundaries;eval_rotate_rotations;plaintext_average_mask;no_bootstrap;plain_time_reused_from_same_run_baseline;openmp_not_seen_by_runner;setup_recorded_separately;encrypt_decrypt_in_total";
 #endif
     return result;
 }
