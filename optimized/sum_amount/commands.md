@@ -52,74 +52,51 @@ rm -f results/original/sum_amount_1m_original_scale50_first60_repeat3.csv
   --results results/original/sum_amount_1m_original_scale50_first60_repeat3.csv
 ```
 
-## Parameter Sweep To Try Before New Code
+## Original Code Lower-Q 1m Run
 
-Use this only after the reference run is correct. Keep one result file per
-parameter choice so the comparison stays readable.
-
-### Batch-size sweep
+This is still **not optimized code**. It uses the normal `utility_bench`
+reference implementation, but with lower modulus settings.
 
 ```bash
-rm -f results/optimized_add/sum_amount_100k_batch4096.csv
+rm -f results/original/sum_amount_1m_original_scale40_first50_repeat3.csv
 
 ./build/utility_bench \
-  --data data/generated/medium_100k/transactions.csv \
+  --data data/generated/custom_1m/transactions.csv \
   --bench sum_amount \
   --backend all \
-  --threads 1 4 8 \
-  --ckks-ring-dim 0 \
-  --ckks-batch-size 4096 \
-  --ckks-depth 1 \
-  --ckks-scale-bits 50 \
-  --ckks-first-mod-bits 60 \
-  --results results/optimized_add/sum_amount_100k_batch4096.csv
-```
-
-### Lower-`Q` sweep
-
-For addition-only sum, try reducing scale and first modulus bits before forcing
-a smaller ring dimension. If accuracy stays good, this may let OpenFHE choose a
-lighter parameter set.
-
-```bash
-rm -f results/optimized_add/sum_amount_100k_scale40_first50.csv
-
-./build/utility_bench \
-  --data data/generated/medium_100k/transactions.csv \
-  --bench sum_amount \
-  --backend all \
-  --threads 1 4 8 \
+  --threads 1 \
+  --repeat 3 \
   --ckks-ring-dim 0 \
   --ckks-batch-size 0 \
   --ckks-depth 1 \
   --ckks-scale-bits 40 \
   --ckks-first-mod-bits 50 \
-  --results results/optimized_add/sum_amount_100k_scale40_first50.csv
+  --results results/original/sum_amount_1m_original_scale40_first50_repeat3.csv
 ```
 
-### Explicit smaller-ring trial
+## Original Code Lower-Q Hard-Ring 1m Run
 
-Only keep this result if OpenFHE accepts the parameters and the accuracy is
-still good. If OpenFHE rejects the ring dimension, that is useful information,
-not a failure of the benchmark.
+This is also still normal/reference code. It tests whether OpenFHE accepts ring
+`8192` at 128-bit security with the chosen `Q`.
 
 ```bash
-rm -f results/optimized_add/sum_amount_100k_ring8192_scale40_first50.csv
+rm -f results/original/sum_amount_1m_original_ring8192_scale40_first50_repeat3.csv
 
 ./build/utility_bench \
-  --data data/generated/medium_100k/transactions.csv \
+  --data data/generated/custom_1m/transactions.csv \
   --bench sum_amount \
   --backend all \
-  --threads 1 4 8 \
+  --threads 1 \
+  --repeat 3 \
   --ckks-ring-dim 8192 \
   --ckks-batch-size 0 \
   --ckks-depth 1 \
   --ckks-scale-bits 40 \
   --ckks-first-mod-bits 50 \
-  --results results/optimized_add/sum_amount_100k_ring8192_scale40_first50.csv
+  --results results/original/sum_amount_1m_original_ring8192_scale40_first50_repeat3.csv
 ```
 
-## Optimized 1m Run With Hard 8192 Ring
+## Optimized Code 1m Run With Hard 8192 Ring
 
 The optimized executable defaults to `--ckks-ring-dim 8192`, but the command
 keeps the value explicit so result files are self-explanatory. Security remains
@@ -142,7 +119,10 @@ rm -f results/optimized_add/sum_amount_opt_1m_ring8192_scale40_first50.csv
   --results results/optimized_add/sum_amount_opt_1m_ring8192_scale40_first50.csv
 ```
 
-If OpenFHE rejects that, try a smaller `Q` while keeping 128-bit security:
+## Lower-Q Fallback If Ring 8192 Rejects
+
+If OpenFHE rejects ring `8192` with `scale=40` and `first=50`, try a smaller
+`Q` while keeping 128-bit security.
 
 ```bash
 rm -f results/optimized_add/sum_amount_opt_1m_ring8192_scale35_first45.csv
@@ -159,4 +139,35 @@ rm -f results/optimized_add/sum_amount_opt_1m_ring8192_scale35_first45.csv
   --ckks-scale-bits 35 \
   --ckks-first-mod-bits 45 \
   --results results/optimized_add/sum_amount_opt_1m_ring8192_scale35_first45.csv
+```
+
+## What To Compare
+
+Use rows where:
+
+```text
+operation ends with _summary_avg
+backend ends with _summary
+```
+
+Compare:
+
+```text
+results/original/...scale50_first60...
+results/original/...scale40_first50...
+results/original/...ring8192_scale40_first50...
+results/optimized_add/...sum_amount_opt...
+```
+
+Key columns:
+
+```text
+plain_time_ms
+he_eval_time_ms
+total_he_time_ms
+actual_ring_dimension
+slots_per_ciphertext
+ciphertext_count
+relative_error
+notes
 ```

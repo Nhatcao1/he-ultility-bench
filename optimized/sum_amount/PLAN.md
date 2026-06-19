@@ -166,6 +166,34 @@ result is still useful: it means this `Q` is too large for ring `8192` at
 | Binary tree addition for chunk sums | May reduce serial dependency when there are many chunks | More useful for 1m+ rows than 100k. |
 | Parameter-only sweep | Finds better batch/ring settings before changing code | Safest first pass. |
 
+## Option Triage For Additive Sum
+
+Use these options for `SUM(amount)` first:
+
+| Option | Decision | Reason |
+| --- | --- | --- |
+| Increase useful batch size | Try now | Fewer ciphertexts and fewer `EvalSum` calls when slots are filled. |
+| Fill all visible SIMD slots | Try now | Most important for fair throughput; use 1m rows, not tiny data. |
+| Pack values from multiple rows together | Already doing | This is the current CKKS column packing shape. |
+| Lower `scalingModSize` / first modulus bits | Try now | Smaller `Q` may permit smaller/faster parameters if accuracy stays good. |
+| Hard ring `8192` at 128-bit | Try now | Accept only if OpenFHE permits it with chosen `Q`. |
+| Binary-tree chunk add | Try now in optimized code | Isolated first code-level variant: `tree_add`. |
+| Parallelize across ciphertext chunks | Later | First get clean one-thread repeat summaries. |
+| Memory pools / reused buffers | Later | Useful only after bigger packing/Q effects are understood. |
+| Pack output channels | Not for sum | Relevant to dense/matrix/ML tests, not one scalar sum. |
+| Polynomial degree / Chebyshev / Paterson-Stockmeyer | Not for sum | Relevant to trig/comparison/polynomial ML, not additive sum. |
+| Batch before bootstrapping | Not for sum | Sum does not bootstrap. |
+
+Experiment order:
+
+```text
+1. Original code, normal Q, auto ring.
+2. Original code, lower Q, auto ring.
+3. Original code, lower Q, hard ring 8192.
+4. Optimized code, lower Q, hard ring 8192, linear_add vs tree_add.
+5. If rejected, lower Q further and repeat.
+```
+
 ## Iteration Rule
 
 Each optimization attempt must be compared against both:
