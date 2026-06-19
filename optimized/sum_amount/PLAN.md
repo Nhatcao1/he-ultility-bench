@@ -132,6 +132,15 @@ Each repeat is written to the result CSV, followed by a `_summary_avg` row for
 the repeated test. Start with this one-thread protocol before running
 multi-thread sweeps.
 
+The reference `utility_bench` runner also supports:
+
+```text
+--repeat 3
+```
+
+Use it for original/plain baseline runs so `results/original/` contains repeat
+rows and average summary rows in a single CSV.
+
 The optimized target defaults to an explicit ring-dimension experiment:
 
 ```text

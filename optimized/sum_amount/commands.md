@@ -27,98 +27,29 @@ python3 scripts/generate_benchmark_data.py \
   --noise-std 300
 ```
 
-## Three Plain C++ Baseline 100k Runs
+## Reference 1m Run With Repeat Summary
 
-```bash
-rm -f results/original/sum_amount_plain_100k_run1.csv
-rm -f results/original/sum_amount_plain_100k_run2.csv
-rm -f results/original/sum_amount_plain_100k_run3.csv
-
-./build/utility_bench \
-  --data data/generated/medium_100k/transactions.csv \
-  --bench sum_amount \
-  --backend plain_cpp \
-  --threads 1 \
-  --results results/original/sum_amount_plain_100k_run1.csv
-
-./build/utility_bench \
-  --data data/generated/medium_100k/transactions.csv \
-  --bench sum_amount \
-  --backend plain_cpp \
-  --threads 1 \
-  --results results/original/sum_amount_plain_100k_run2.csv
-
-./build/utility_bench \
-  --data data/generated/medium_100k/transactions.csv \
-  --bench sum_amount \
-  --backend plain_cpp \
-  --threads 1 \
-  --results results/original/sum_amount_plain_100k_run3.csv
-```
-
-## Three Original Unoptimized Additive 100k Runs
-
-These use the existing reference code. Security is not passed as a CLI option;
+This uses the existing reference code. Security is not passed as a CLI option;
 the current code uses OpenFHE `HEStd_128_classic` internally.
 
-```bash
-rm -f results/original/sum_amount_100k_run1.csv
-rm -f results/original/sum_amount_100k_run2.csv
-rm -f results/original/sum_amount_100k_run3.csv
-
-./build/utility_bench \
-  --data data/generated/medium_100k/transactions.csv \
-  --bench sum_amount \
-  --backend all \
-  --threads 1 4 8 \
-  --ckks-ring-dim 0 \
-  --ckks-batch-size 0 \
-  --ckks-depth 1 \
-  --ckks-scale-bits 50 \
-  --ckks-first-mod-bits 60 \
-  --results results/original/sum_amount_100k_run1.csv
-
-./build/utility_bench \
-  --data data/generated/medium_100k/transactions.csv \
-  --bench sum_amount \
-  --backend all \
-  --threads 1 4 8 \
-  --ckks-ring-dim 0 \
-  --ckks-batch-size 0 \
-  --ckks-depth 1 \
-  --ckks-scale-bits 50 \
-  --ckks-first-mod-bits 60 \
-  --results results/original/sum_amount_100k_run2.csv
-
-./build/utility_bench \
-  --data data/generated/medium_100k/transactions.csv \
-  --bench sum_amount \
-  --backend all \
-  --threads 1 4 8 \
-  --ckks-ring-dim 0 \
-  --ckks-batch-size 0 \
-  --ckks-depth 1 \
-  --ckks-scale-bits 50 \
-  --ckks-first-mod-bits 60 \
-  --results results/original/sum_amount_100k_run3.csv
-```
-
-## Reference 1m Run
+The command writes three plain C++ rows, one plain `_summary_avg` row, three
+normal OpenFHE rows, and one OpenFHE `_summary_avg` row.
 
 ```bash
-rm -f results/original/sum_amount_1m.csv
+rm -f results/original/sum_amount_1m_original_scale50_first60_repeat3.csv
 
 ./build/utility_bench \
   --data data/generated/custom_1m/transactions.csv \
   --bench sum_amount \
   --backend all \
-  --threads 1 4 8 \
+  --threads 1 \
+  --repeat 3 \
   --ckks-ring-dim 0 \
   --ckks-batch-size 0 \
   --ckks-depth 1 \
   --ckks-scale-bits 50 \
   --ckks-first-mod-bits 60 \
-  --results results/original/sum_amount_1m.csv
+  --results results/original/sum_amount_1m_original_scale50_first60_repeat3.csv
 ```
 
 ## Parameter Sweep To Try Before New Code
