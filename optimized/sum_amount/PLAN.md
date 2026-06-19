@@ -55,13 +55,46 @@ If the optimized result is wrong, it is not an optimization.
 
 ## What We Try First
 
-| Step | Optimization idea | Why it is safe |
+This track is measurement-first. Do not write optimized code until the
+reference variance is visible.
+
+| Step | Action | Why it matters |
 | --- | --- | --- |
-| 1 | Run reference with `ckks-batch-size 0` so OpenFHE uses all available slots. | Pure parameter choice; same code and same math. |
-| 2 | Compare auto ring dimension vs explicit production ring dimension. | Confirms whether OpenFHE parameter choice is already best for this depth/security. |
-| 3 | Keep depth at `1` for reference runs. | Addition-only does not need multiplicative depth, but current CLI expects positive depth. |
-| 4 | Record actual ring dimension, slots, ciphertext count, and slot utilization. | Prevents fake speedups from underfilled ciphertexts. |
-| 5 | Compare 100k first, then 1m. | 100k confirms behavior; 1m shows SIMD amortization better. |
+| 1 | Run the plain C++ baseline three times. | Gives normal timing variance before comparing HE. |
+| 2 | Run the original unoptimized OpenFHE additive benchmark three times. | Establishes the current reference HE cost. |
+| 3 | Use `ckks-ring-dim 0` and `ckks-batch-size 0` first. | Lets OpenFHE pick safe parameters and use available slots. |
+| 4 | Keep `ckks-depth 1` first. | Addition-only does not need multiplicative depth, but current CLI expects positive depth. |
+| 5 | Record actual ring dimension, slots, ciphertext count, and slot utilization. | Prevents fake speedups from underfilled ciphertexts. |
+| 6 | Only then try lower `Q` / smaller ring experiments. | Ring dimension and modulus size are coupled by the security check. |
+| 7 | Compare 100k first, then 1m. | 100k confirms behavior; 1m shows SIMD amortization better. |
+
+## Modulus `Q` And Ring Dimension
+
+For CKKS, ring dimension cannot be treated as an isolated speed knob.
+
+Approximate intuition:
+
+```text
+larger depth
+  -> more modulus-chain levels
+  -> larger total coefficient modulus Q
+  -> OpenFHE may require larger ring dimension for 128-bit security
+  -> each ciphertext operation gets heavier
+```
+
+For addition-only `SUM(amount)`, we should not need a large modulus chain.
+That means the first safe optimization direction is:
+
+```text
+keep depth low
+try smaller scale bits only if accuracy stays good
+let OpenFHE choose ring dimension first
+then try explicit smaller ring dimensions only when OpenFHE accepts them
+```
+
+Important note: the current benchmark code does not expose a CLI security-bit
+flag. It internally uses OpenFHE `HEStd_128_classic`. So "no specific security
+bit" in the command means no extra CLI override, not "no security level."
 
 ## Optimized Code Boundary
 
@@ -90,6 +123,28 @@ into the first optimized target.
 | Pre-size packed vectors to full slot count | May make packing behavior more explicit | Need verify it does not change last-chunk correctness. |
 | Binary tree addition for chunk sums | May reduce serial dependency when there are many chunks | More useful for 1m+ rows than 100k. |
 | Parameter-only sweep | Finds better batch/ring settings before changing code | Safest first pass. |
+
+## Iteration Rule
+
+Each optimization attempt must be compared against both:
+
+```text
+1. plain C++ baseline
+2. original unoptimized OpenFHE additive benchmark
+```
+
+Only accept an optimized variant if:
+
+```text
+same input data
+same SUM(amount) result
+relative_error within threshold
+faster than original OpenFHE in either eval-only or total HE time
+```
+
+If a variant is only faster because it changes precision, ring security, setup
+inclusion, or input packing assumptions, record that clearly instead of calling
+it a general speedup.
 
 ## Do Not Optimize By
 

@@ -27,10 +27,44 @@ python3 scripts/generate_benchmark_data.py \
   --noise-std 300
 ```
 
-## Reference 100k Run
+## Three Plain C++ Baseline 100k Runs
 
 ```bash
-rm -f results/original/sum_amount_100k.csv
+rm -f results/original/sum_amount_plain_100k_run1.csv
+rm -f results/original/sum_amount_plain_100k_run2.csv
+rm -f results/original/sum_amount_plain_100k_run3.csv
+
+./build/utility_bench \
+  --data data/generated/medium_100k/transactions.csv \
+  --bench sum_amount \
+  --backend plain_cpp \
+  --threads 1 \
+  --results results/original/sum_amount_plain_100k_run1.csv
+
+./build/utility_bench \
+  --data data/generated/medium_100k/transactions.csv \
+  --bench sum_amount \
+  --backend plain_cpp \
+  --threads 1 \
+  --results results/original/sum_amount_plain_100k_run2.csv
+
+./build/utility_bench \
+  --data data/generated/medium_100k/transactions.csv \
+  --bench sum_amount \
+  --backend plain_cpp \
+  --threads 1 \
+  --results results/original/sum_amount_plain_100k_run3.csv
+```
+
+## Three Original Unoptimized Additive 100k Runs
+
+These use the existing reference code. Security is not passed as a CLI option;
+the current code uses OpenFHE `HEStd_128_classic` internally.
+
+```bash
+rm -f results/original/sum_amount_100k_run1.csv
+rm -f results/original/sum_amount_100k_run2.csv
+rm -f results/original/sum_amount_100k_run3.csv
 
 ./build/utility_bench \
   --data data/generated/medium_100k/transactions.csv \
@@ -42,7 +76,31 @@ rm -f results/original/sum_amount_100k.csv
   --ckks-depth 1 \
   --ckks-scale-bits 50 \
   --ckks-first-mod-bits 60 \
-  --results results/original/sum_amount_100k.csv
+  --results results/original/sum_amount_100k_run1.csv
+
+./build/utility_bench \
+  --data data/generated/medium_100k/transactions.csv \
+  --bench sum_amount \
+  --backend all \
+  --threads 1 4 8 \
+  --ckks-ring-dim 0 \
+  --ckks-batch-size 0 \
+  --ckks-depth 1 \
+  --ckks-scale-bits 50 \
+  --ckks-first-mod-bits 60 \
+  --results results/original/sum_amount_100k_run2.csv
+
+./build/utility_bench \
+  --data data/generated/medium_100k/transactions.csv \
+  --bench sum_amount \
+  --backend all \
+  --threads 1 4 8 \
+  --ckks-ring-dim 0 \
+  --ckks-batch-size 0 \
+  --ckks-depth 1 \
+  --ckks-scale-bits 50 \
+  --ckks-first-mod-bits 60 \
+  --results results/original/sum_amount_100k_run3.csv
 ```
 
 ## Reference 1m Run
@@ -68,6 +126,8 @@ rm -f results/original/sum_amount_1m.csv
 Use this only after the reference run is correct. Keep one result file per
 parameter choice so the comparison stays readable.
 
+### Batch-size sweep
+
 ```bash
 rm -f results/optimized_add/sum_amount_100k_batch4096.csv
 
@@ -82,6 +142,50 @@ rm -f results/optimized_add/sum_amount_100k_batch4096.csv
   --ckks-scale-bits 50 \
   --ckks-first-mod-bits 60 \
   --results results/optimized_add/sum_amount_100k_batch4096.csv
+```
+
+### Lower-`Q` sweep
+
+For addition-only sum, try reducing scale and first modulus bits before forcing
+a smaller ring dimension. If accuracy stays good, this may let OpenFHE choose a
+lighter parameter set.
+
+```bash
+rm -f results/optimized_add/sum_amount_100k_scale40_first50.csv
+
+./build/utility_bench \
+  --data data/generated/medium_100k/transactions.csv \
+  --bench sum_amount \
+  --backend all \
+  --threads 1 4 8 \
+  --ckks-ring-dim 0 \
+  --ckks-batch-size 0 \
+  --ckks-depth 1 \
+  --ckks-scale-bits 40 \
+  --ckks-first-mod-bits 50 \
+  --results results/optimized_add/sum_amount_100k_scale40_first50.csv
+```
+
+### Explicit smaller-ring trial
+
+Only keep this result if OpenFHE accepts the parameters and the accuracy is
+still good. If OpenFHE rejects the ring dimension, that is useful information,
+not a failure of the benchmark.
+
+```bash
+rm -f results/optimized_add/sum_amount_100k_ring8192_scale40_first50.csv
+
+./build/utility_bench \
+  --data data/generated/medium_100k/transactions.csv \
+  --bench sum_amount \
+  --backend all \
+  --threads 1 4 8 \
+  --ckks-ring-dim 8192 \
+  --ckks-batch-size 0 \
+  --ckks-depth 1 \
+  --ckks-scale-bits 40 \
+  --ckks-first-mod-bits 50 \
+  --results results/optimized_add/sum_amount_100k_ring8192_scale40_first50.csv
 ```
 
 ## Future Optimized Run
