@@ -118,9 +118,9 @@ Current variants:
 
 | Variant | Purpose |
 | --- | --- |
-| `linear_add` | Separated optimized-code baseline that mirrors the reference chunk-sum accumulation shape. |
-| `tree_add` | First candidate optimization: compute chunk sums, then combine them with a binary `EvalAdd` tree. |
-| `add_then_sum` | Main additive optimization: add packed ciphertext chunks slot-wise first, then run one final `EvalSum`. |
+| `add_then_sum` | Main end-to-end optimized path: encode/encrypt chunks, add packed ciphertext chunks slot-wise first, then run one final `EvalSum`. |
+| `add_then_sum_preencrypted` | Server-side eval metric: same ciphertext math, but `total_he_time_ms` excludes encode/encrypt to model data that is already encrypted before reaching the compute server. |
+| `parallel_encrypt_add_then_sum` | Tries parallel chunk encode/encrypt before the same add-then-sum eval. Useful for checking whether encryption dominates the 1m-row runtime. |
 
 The runner defaults to one OpenFHE thread and three repeats:
 
@@ -188,9 +188,9 @@ Use these options for `SUM(amount)` first:
 | Pack values from multiple rows together | Already doing | This is the current CKKS column packing shape. |
 | Lower `scalingModSize` / first modulus bits | Try now | Smaller `Q` may permit smaller/faster parameters if accuracy stays good. |
 | Hard ring `8192` at 128-bit | Try now | Accept only if OpenFHE permits it with chosen `Q`. |
-| Binary-tree chunk add | Try now in optimized code | Isolated first code-level variant: `tree_add`. |
 | Add chunks before `EvalSum` | Try now in optimized code | Replaces many expensive `EvalSum` calls with cheap `EvalAdd` calls plus one final `EvalSum`. |
-| Parallelize across ciphertext chunks | Later | First get clean one-thread repeat summaries. |
+| Preencrypted eval metric | Try now in optimized code | Separates server-side encrypted compute from client-side encryption cost. |
+| Parallelize across ciphertext chunks | Try now in optimized code | Targets the encode/encrypt cost that remains after `add_then_sum`. |
 | Memory pools / reused buffers | Later | Useful only after bigger packing/Q effects are understood. |
 | Pack output channels | Not for sum | Relevant to dense/matrix/ML tests, not one scalar sum. |
 | Polynomial degree / Chebyshev / Paterson-Stockmeyer | Not for sum | Relevant to trig/comparison/polynomial ML, not additive sum. |
@@ -202,7 +202,8 @@ Experiment order:
 1. Original code, normal Q, auto ring.
 2. Original code, lower Q, auto ring.
 3. Original code, lower Q, hard ring 8192.
-4. Optimized code, lower Q, hard ring 8192, compare `linear_add`, `tree_add`, and `add_then_sum`.
+4. Optimized code, lower Q, hard ring 8192, compare `add_then_sum`,
+   `add_then_sum_preencrypted`, and `parallel_encrypt_add_then_sum`.
 5. If rejected, lower Q further and repeat.
 ```
 

@@ -109,9 +109,9 @@ OpenFHE `HEStd_128_classic` inside the code.
 `--variant both` runs:
 
 ```text
-linear_add
-tree_add
 add_then_sum
+add_then_sum_preencrypted
+parallel_encrypt_add_then_sum
 ```
 
 ```bash
@@ -119,7 +119,7 @@ rm -f results/optimized_add/sum_amount_opt_1m_ring8192_scale30_first40.csv
 
 ./build/sum_amount_opt_bench \
   --data data/generated/custom_1m/transactions.csv \
-  --backend all \
+  --backend openfhe_ckks \
   --variant both \
   --threads 1 \
   --repeat 3 \
@@ -148,6 +148,44 @@ rm -f results/optimized_add/sum_amount_opt_1m_ring8192_scale30_first40_add_then_
   --ckks-scale-bits 30 \
   --ckks-first-mod-bits 40 \
   --results results/optimized_add/sum_amount_opt_1m_ring8192_scale30_first40_add_then_sum.csv
+```
+
+To run the preencrypted eval metric only:
+
+```bash
+rm -f results/optimized_add/sum_amount_opt_1m_ring8192_scale30_first40_preencrypted.csv
+
+./build/sum_amount_opt_bench \
+  --data data/generated/custom_1m/transactions.csv \
+  --backend openfhe_ckks \
+  --variant add_then_sum_preencrypted \
+  --threads 1 \
+  --repeat 3 \
+  --ckks-ring-dim 8192 \
+  --ckks-batch-size 0 \
+  --ckks-depth 1 \
+  --ckks-scale-bits 30 \
+  --ckks-first-mod-bits 40 \
+  --results results/optimized_add/sum_amount_opt_1m_ring8192_scale30_first40_preencrypted.csv
+```
+
+To try parallel chunk encryption:
+
+```bash
+rm -f results/optimized_add/sum_amount_opt_1m_ring8192_scale30_first40_parallel_encrypt.csv
+
+./build/sum_amount_opt_bench \
+  --data data/generated/custom_1m/transactions.csv \
+  --backend openfhe_ckks \
+  --variant parallel_encrypt_add_then_sum \
+  --threads 4 \
+  --repeat 3 \
+  --ckks-ring-dim 8192 \
+  --ckks-batch-size 0 \
+  --ckks-depth 1 \
+  --ckks-scale-bits 30 \
+  --ckks-first-mod-bits 40 \
+  --results results/optimized_add/sum_amount_opt_1m_ring8192_scale30_first40_parallel_encrypt.csv
 ```
 
 ## Accuracy Fallback If 30/40 Is Too Noisy

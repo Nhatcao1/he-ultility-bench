@@ -18,10 +18,11 @@
 #include <exception>
 #include <filesystem>
 #include <iostream>
+#include <mutex>
 #include <sstream>
 #include <stdexcept>
 #include <string>
-#include <utility>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -33,9 +34,9 @@ enum class BackendMode {
 };
 
 enum class AddVariant {
-    LinearAdd,
-    TreeAdd,
     AddThenSum,
+    AddThenSumPreencrypted,
+    ParallelEncryptAddThenSum,
     Both,
 };
 
@@ -66,7 +67,8 @@ void print_usage(const char* program) {
     std::cerr
         << "Usage: " << program << " [--data transactions.csv] "
         << "[--backend plain_cpp|openfhe_ckks|all] "
-        << "[--variant linear_add|tree_add|add_then_sum|both] "
+        << "[--variant add_then_sum|add_then_sum_preencrypted|"
+        << "parallel_encrypt_add_then_sum|both] "
         << "[--threads 1] [--repeat 3] [--max-rows 100000] "
         << "[--ckks-ring-dim 8192] [--ckks-batch-size 0] "
         << "[--ckks-depth 1] [--ckks-scale-bits 30] [--ckks-first-mod-bits 40] "
@@ -87,14 +89,14 @@ BackendMode parse_backend_mode(const std::string& value) {
 }
 
 AddVariant parse_add_variant(const std::string& value) {
-    if (value == "linear_add") {
-        return AddVariant::LinearAdd;
-    }
-    if (value == "tree_add") {
-        return AddVariant::TreeAdd;
-    }
     if (value == "add_then_sum") {
         return AddVariant::AddThenSum;
+    }
+    if (value == "add_then_sum_preencrypted") {
+        return AddVariant::AddThenSumPreencrypted;
+    }
+    if (value == "parallel_encrypt_add_then_sum") {
+        return AddVariant::ParallelEncryptAddThenSum;
     }
     if (value == "both") {
         return AddVariant::Both;
@@ -112,6 +114,20 @@ bool wants_openfhe_ckks(BackendMode backend) {
 
 bool wants_variant(AddVariant requested, AddVariant candidate) {
     return requested == AddVariant::Both || requested == candidate;
+}
+
+std::string add_variant_name(AddVariant variant) {
+    switch (variant) {
+        case AddVariant::AddThenSum:
+            return "add_then_sum";
+        case AddVariant::AddThenSumPreencrypted:
+            return "add_then_sum_preencrypted";
+        case AddVariant::ParallelEncryptAddThenSum:
+            return "parallel_encrypt_add_then_sum";
+        case AddVariant::Both:
+            return "both";
+    }
+    throw std::runtime_error("unknown add variant enum value");
 }
 
 CliArgs parse_args(int argc, char** argv) {
@@ -366,29 +382,6 @@ std::size_t configure_openfhe_threads(std::size_t requested_threads) {
 #endif
 }
 
-std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>> tree_reduce_add(
-    const lbcrypto::CryptoContext<lbcrypto::DCRTPoly>& cc,
-    std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>> values) {
-    if (values.empty()) {
-        return values;
-    }
-
-    while (values.size() > 1) {
-        std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>> next;
-        next.reserve((values.size() + 1) / 2);
-        for (std::size_t i = 0; i < values.size(); i += 2) {
-            if (i + 1 < values.size()) {
-                next.push_back(cc->EvalAdd(values[i], values[i + 1]));
-            } else {
-                next.push_back(values[i]);
-            }
-        }
-        values = std::move(next);
-    }
-
-    return values;
-}
-
 BenchmarkResult run_openfhe_sum_amount_variant(
     const Transactions& data,
     std::size_t thread_count,
@@ -409,6 +402,8 @@ BenchmarkResult run_openfhe_sum_amount_variant(
     using lbcrypto::PKE;
     using lbcrypto::Plaintext;
 
+    const bool preencrypted_metric = variant == AddVariant::AddThenSumPreencrypted;
+    const bool parallel_encrypt = variant == AddVariant::ParallelEncryptAddThenSum;
     const std::size_t openfhe_threads = configure_openfhe_threads(thread_count);
 
     const Timer setup_timer;
@@ -440,6 +435,9 @@ BenchmarkResult run_openfhe_sum_amount_variant(
     if (slots_per_ciphertext == 0) {
         throw std::runtime_error("OpenFHE CKKS context reported zero slots");
     }
+    if (data.size() == 0) {
+        throw std::runtime_error("sum_amount optimization requires at least one row");
+    }
 
     const std::size_t ciphertext_count = ceil_div(data.size(), slots_per_ciphertext);
     const std::size_t used_slots_last_ciphertext =
@@ -452,72 +450,87 @@ BenchmarkResult run_openfhe_sum_amount_variant(
 
     double encode_time_ms = 0.0;
     double encrypt_time_ms = 0.0;
-    double he_eval_time_ms = 0.0;
-    bool has_total = false;
-    Ciphertext<DCRTPoly> total_ciphertext;
-    std::vector<Ciphertext<DCRTPoly>> chunk_sums;
-    if (variant == AddVariant::TreeAdd) {
-        chunk_sums.reserve(ciphertext_count);
-    }
+    std::vector<Ciphertext<DCRTPoly>> ciphertexts(ciphertext_count);
 
-    for (std::size_t offset = 0; offset < data.size(); offset += slots_per_ciphertext) {
-        const std::size_t used_slots = std::min(slots_per_ciphertext, data.size() - offset);
+    const auto encrypt_chunk = [&](std::size_t chunk_index) {
+        const std::size_t offset = chunk_index * slots_per_ciphertext;
+        const std::size_t used_slots =
+            std::min(slots_per_ciphertext, data.size() - offset);
         std::vector<double> packed_values(slots_per_ciphertext, 0.0);
         for (std::size_t i = 0; i < used_slots; ++i) {
             packed_values[i] = data.amount[offset + i];
         }
 
-        const Timer encode_timer;
         Plaintext plaintext = cc->MakeCKKSPackedPlaintext(
             packed_values, 1, 0, nullptr, static_cast<uint32_t>(slots_per_ciphertext));
-        encode_time_ms += encode_timer.elapsed_ms();
+        ciphertexts[chunk_index] = cc->Encrypt(keys.publicKey, plaintext);
+    };
 
-        const Timer encrypt_timer;
-        auto ciphertext = cc->Encrypt(keys.publicKey, plaintext);
-        encrypt_time_ms += encrypt_timer.elapsed_ms();
+    if (parallel_encrypt) {
+        const std::size_t worker_count = effective_thread_count(openfhe_threads, ciphertext_count);
+        std::exception_ptr first_exception;
+        std::mutex exception_mutex;
+        const Timer parallel_encrypt_timer;
+        std::vector<std::thread> workers;
+        workers.reserve(worker_count);
 
-        const Timer eval_timer;
-        if (variant == AddVariant::AddThenSum) {
-            if (has_total) {
-                total_ciphertext = cc->EvalAdd(total_ciphertext, ciphertext);
-            } else {
-                total_ciphertext = ciphertext;
-                has_total = true;
-            }
-        } else {
-            auto chunk_sum = cc->EvalSum(ciphertext, static_cast<uint32_t>(used_slots));
-            if (variant == AddVariant::TreeAdd) {
-                chunk_sums.push_back(chunk_sum);
-            } else if (has_total) {
-                total_ciphertext = cc->EvalAdd(total_ciphertext, chunk_sum);
-            } else {
-                total_ciphertext = chunk_sum;
-                has_total = true;
-            }
+        const std::size_t base_chunk = ciphertext_count / worker_count;
+        const std::size_t remainder = ciphertext_count % worker_count;
+        std::size_t start = 0;
+        for (std::size_t worker_index = 0; worker_index < worker_count; ++worker_index) {
+            const std::size_t extra = worker_index < remainder ? 1 : 0;
+            const std::size_t end = start + base_chunk + extra;
+            workers.emplace_back([start, end, &encrypt_chunk, &first_exception, &exception_mutex]() {
+                try {
+                    for (std::size_t chunk_index = start; chunk_index < end; ++chunk_index) {
+                        encrypt_chunk(chunk_index);
+                    }
+                } catch (...) {
+                    std::lock_guard<std::mutex> lock(exception_mutex);
+                    if (!first_exception) {
+                        first_exception = std::current_exception();
+                    }
+                }
+            });
+            start = end;
         }
-        he_eval_time_ms += eval_timer.elapsed_ms();
-    }
 
-    if (variant == AddVariant::AddThenSum) {
-        const Timer eval_timer;
-        total_ciphertext = cc->EvalSum(
-            total_ciphertext, static_cast<uint32_t>(slots_per_ciphertext));
-        he_eval_time_ms += eval_timer.elapsed_ms();
-    }
-
-    if (variant == AddVariant::TreeAdd) {
-        const Timer eval_timer;
-        auto reduced = tree_reduce_add(cc, std::move(chunk_sums));
-        if (reduced.empty()) {
-            throw std::runtime_error("tree_add produced no chunk sums");
+        for (std::thread& worker : workers) {
+            worker.join();
         }
-        total_ciphertext = reduced[0];
-        has_total = true;
-        he_eval_time_ms += eval_timer.elapsed_ms();
+        if (first_exception) {
+            std::rethrow_exception(first_exception);
+        }
+        encrypt_time_ms = parallel_encrypt_timer.elapsed_ms();
+    } else {
+        for (std::size_t chunk_index = 0; chunk_index < ciphertext_count; ++chunk_index) {
+            const std::size_t offset = chunk_index * slots_per_ciphertext;
+            const std::size_t used_slots =
+                std::min(slots_per_ciphertext, data.size() - offset);
+            std::vector<double> packed_values(slots_per_ciphertext, 0.0);
+            for (std::size_t i = 0; i < used_slots; ++i) {
+                packed_values[i] = data.amount[offset + i];
+            }
+
+            const Timer encode_timer;
+            Plaintext plaintext = cc->MakeCKKSPackedPlaintext(
+                packed_values, 1, 0, nullptr, static_cast<uint32_t>(slots_per_ciphertext));
+            encode_time_ms += encode_timer.elapsed_ms();
+
+            const Timer encrypt_timer;
+            ciphertexts[chunk_index] = cc->Encrypt(keys.publicKey, plaintext);
+            encrypt_time_ms += encrypt_timer.elapsed_ms();
+        }
     }
-    if (!has_total) {
-        throw std::runtime_error("no ciphertext total was produced");
+
+    Ciphertext<DCRTPoly> total_ciphertext = ciphertexts[0];
+    const Timer eval_timer;
+    for (std::size_t chunk_index = 1; chunk_index < ciphertexts.size(); ++chunk_index) {
+        total_ciphertext = cc->EvalAdd(total_ciphertext, ciphertexts[chunk_index]);
     }
+    total_ciphertext = cc->EvalSum(
+        total_ciphertext, static_cast<uint32_t>(slots_per_ciphertext));
+    const double he_eval_time_ms = eval_timer.elapsed_ms();
 
     Plaintext decrypted;
     const Timer decrypt_timer;
@@ -533,23 +546,21 @@ BenchmarkResult run_openfhe_sum_amount_variant(
     const double result_value = decoded_values[0].real();
     const double decode_time_ms = decode_timer.elapsed_ms();
 
-    const double total_he_time_ms =
-        encode_time_ms + encrypt_time_ms + he_eval_time_ms + decrypt_time_ms + decode_time_ms;
+    const double total_he_time_ms = preencrypted_metric
+        ? he_eval_time_ms + decrypt_time_ms + decode_time_ms
+        : encode_time_ms + encrypt_time_ms + he_eval_time_ms + decrypt_time_ms + decode_time_ms;
     const double absolute_error = std::abs(result_value - baseline_value);
     const double relative_error = divide_or_zero(absolute_error, std::abs(baseline_value));
 
-    const std::string variant_name =
-        variant == AddVariant::TreeAdd
-            ? "tree_add"
-            : variant == AddVariant::AddThenSum
-            ? "add_then_sum"
-            : "linear_add";
+    const std::string variant_name = add_variant_name(variant);
 
     BenchmarkResult result;
     result.operation = "sum_amount_opt_" + variant_name;
     result.backend = "openfhe_ckks_opt";
     result.rows = data.size();
-    result.threads = openfhe_threads;
+    result.threads = parallel_encrypt
+        ? effective_thread_count(openfhe_threads, ciphertext_count)
+        : openfhe_threads;
     result.plain_time_ms = plain_time_ms;
     result.setup_time_ms = setup_time_ms;
     result.encode_time_ms = encode_time_ms;
@@ -575,16 +586,24 @@ BenchmarkResult run_openfhe_sum_amount_variant(
     result.multiplicative_depth = config.multiplicative_depth;
     result.scaling_mod_size = config.scaling_mod_size;
     result.first_mod_size = config.first_mod_size;
-    result.rotation_count_reported =
-        variant == AddVariant::AddThenSum
-            ? ceil_log2_nonzero(slots_per_ciphertext)
-            : ciphertext_count * ceil_log2_nonzero(slots_per_ciphertext);
-    result.notes = "src_optimized;sum_amount_only;variant=" + variant_name +
+    result.rotation_count_reported = ceil_log2_nonzero(slots_per_ciphertext);
+
+    std::string notes = "src_optimized;sum_amount_only;variant=" + variant_name +
+        ";add_ciphertext_chunks_before_final_evalsum";
+    if (preencrypted_metric) {
+        notes += ";preencrypted_metric;encode_encrypt_recorded_but_excluded_from_total";
+    }
+    if (parallel_encrypt) {
+        notes += ";parallel_chunk_encrypt;encrypt_time_is_encode_encrypt_wall_time";
+    }
 #ifdef _OPENMP
-        ";omp_set_num_threads;setup_recorded_separately;encrypt_decrypt_in_total";
+    notes += ";omp_set_num_threads";
 #else
-        ";openmp_not_seen_by_runner;setup_recorded_separately;encrypt_decrypt_in_total";
+    notes += ";openmp_not_seen_by_runner";
 #endif
+    notes += ";setup_recorded_separately";
+    notes += preencrypted_metric ? ";decrypt_decode_in_total" : ";encrypt_decrypt_in_total";
+    result.notes = notes;
 
     return result;
 }
@@ -647,7 +666,9 @@ int main(int argc, char** argv) {
 
             for (const std::size_t thread_count : args.thread_counts) {
                 for (const AddVariant variant :
-                     {AddVariant::LinearAdd, AddVariant::TreeAdd, AddVariant::AddThenSum}) {
+                     {AddVariant::AddThenSum,
+                      AddVariant::AddThenSumPreencrypted,
+                      AddVariant::ParallelEncryptAddThenSum}) {
                     if (!wants_variant(args.variant, variant)) {
                         continue;
                     }

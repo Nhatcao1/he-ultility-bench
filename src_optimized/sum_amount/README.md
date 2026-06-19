@@ -24,9 +24,9 @@ Current variants:
 
 | Variant | Meaning |
 | --- | --- |
-| `linear_add` | Mirrors the reference chunk-sum accumulation shape. Useful as the separated optimized-code baseline. |
-| `tree_add` | Computes each encrypted chunk sum, then combines chunk sums with a binary EvalAdd tree. This may reduce serial dependency when there are many chunks. |
-| `add_then_sum` | Adds packed ciphertext chunks slot-wise first, then runs one final `EvalSum`. This reduces many expensive chunk-level `EvalSum` calls to one. |
+| `add_then_sum` | End-to-end encrypted sum: encode/encrypt chunks, add packed ciphertext chunks slot-wise, then run one final `EvalSum`. |
+| `add_then_sum_preencrypted` | Same encrypted eval as `add_then_sum`, but reports `total_he_time_ms` as eval+decrypt+decode only. Encode/encrypt are still measured in their own columns. |
+| `parallel_encrypt_add_then_sum` | Same math as `add_then_sum`, but tries chunk-level parallel encode/encrypt before the final add-then-sum eval. |
 
 All variants compute the same scalar `SUM(amount)` and must be compared
 against the reference `utility_bench --bench sum_amount` output.
