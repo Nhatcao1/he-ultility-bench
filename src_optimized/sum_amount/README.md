@@ -45,10 +45,10 @@ testing:
 ```text
 security level = OpenFHE HEStd_128_classic
 requested ring dimension = 8192
-scale bits = 35
-first modulus bits = 45
+scale bits = 30
+first modulus bits = 40
 depth = 1
 ```
 
-If OpenFHE rejects ring dimension `8192`, keep 128-bit security and reduce the
-modulus settings instead of lowering security.
+This setting has passed the server-side OpenFHE standards check for the 1m
+additive sum experiment.

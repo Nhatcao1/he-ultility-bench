@@ -147,14 +147,13 @@ The optimized target defaults to an explicit ring-dimension experiment:
 security level = OpenFHE HEStd_128_classic
 requested ring dimension = 8192
 depth = 1
-scale bits = 35
-first modulus bits = 45
+scale bits = 30
+first modulus bits = 40
 ```
 
-This is intentionally aggressive. If OpenFHE rejects these parameters, the
-result is still useful: it means this `Q` is too large for ring `8192` at
-128-bit classic security. The next move is to lower `scale bits` /
-`first modulus bits`, not to lower security.
+This is intentionally aggressive. It keeps 128-bit classic security while using
+the smallest `Q` setting that has passed our server-side ring `8192` test so
+far.
 
 Known server result:
 
@@ -162,6 +161,9 @@ Known server result:
 ring=8192 scale=40 first=50 depth=1
   -> rejected by OpenFHE standards check
   -> OpenFHE recommended ring=16384
+
+ring=8192 scale=30 first=40 depth=1
+  -> accepted by OpenFHE standards check
 ```
 
 ## Candidate Code Optimizations Later
