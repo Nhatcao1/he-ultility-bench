@@ -98,21 +98,28 @@ bit" in the command means no extra CLI override, not "no security level."
 
 ## Optimized Code Boundary
 
-When we add code, it should live under:
+Optimized code lives under:
 
 ```text
 src_optimized/sum_amount/
 ```
 
-The first optimized executable should be narrow and boring:
+The first optimized executable is intentionally narrow:
 
 ```text
 sum_amount_opt_bench
 ```
 
-It should only benchmark `SUM(amount)` so any speed difference is easier to
-explain. Do not mix weighted sum, rolling average, comparison, or other benches
-into the first optimized target.
+It only benchmarks `SUM(amount)` so any speed difference is easier to explain.
+Do not mix weighted sum, rolling average, comparison, or other benches into this
+target.
+
+Current variants:
+
+| Variant | Purpose |
+| --- | --- |
+| `linear_add` | Separated optimized-code baseline that mirrors the reference chunk-sum accumulation shape. |
+| `tree_add` | First candidate optimization: compute chunk sums, then combine them with a binary `EvalAdd` tree. |
 
 ## Candidate Code Optimizations Later
 
