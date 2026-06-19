@@ -45,8 +45,8 @@ testing:
 ```text
 security level = OpenFHE HEStd_128_classic
 requested ring dimension = 8192
-scale bits = 40
-first modulus bits = 50
+scale bits = 35
+first modulus bits = 45
 depth = 1
 ```
 

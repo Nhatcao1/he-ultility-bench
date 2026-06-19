@@ -49,16 +49,16 @@ struct CliArgs {
     std::size_t ckks_ring_dim = 8192;
     std::size_t ckks_batch_size = 0;
     std::size_t ckks_depth = 1;
-    std::size_t ckks_scale_bits = 40;
-    std::size_t ckks_first_mod_bits = 50;
+    std::size_t ckks_scale_bits = 35;
+    std::size_t ckks_first_mod_bits = 45;
 };
 
 struct CkksOptConfig {
     std::size_t requested_ring_dimension = 8192;
     std::size_t batch_size = 0;
     std::size_t multiplicative_depth = 1;
-    std::size_t scaling_mod_size = 40;
-    std::size_t first_mod_size = 50;
+    std::size_t scaling_mod_size = 35;
+    std::size_t first_mod_size = 45;
 };
 
 void print_usage(const char* program) {
@@ -68,7 +68,7 @@ void print_usage(const char* program) {
         << "[--variant linear_add|tree_add|both] "
         << "[--threads 1] [--repeat 3] [--max-rows 100000] "
         << "[--ckks-ring-dim 8192] [--ckks-batch-size 0] "
-        << "[--ckks-depth 1] [--ckks-scale-bits 40] [--ckks-first-mod-bits 50] "
+        << "[--ckks-depth 1] [--ckks-scale-bits 35] [--ckks-first-mod-bits 45] "
         << "[--results results/optimized_add/sum_amount_opt.csv]\n";
 }
 

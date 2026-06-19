@@ -79,8 +79,12 @@ rm -f results/original/sum_amount_1m_original_scale40_first50_repeat3.csv
 This is also still normal/reference code. It tests whether OpenFHE accepts ring
 `8192` at 128-bit security with the chosen `Q`.
 
+Server note: `ring=8192 scale=40 first=50 depth=1` was rejected by OpenFHE with
+the HE standards check recommending ring `16384`, so the first hard-ring retry
+uses `scale=35 first=45`.
+
 ```bash
-rm -f results/original/sum_amount_1m_original_ring8192_scale40_first50_repeat3.csv
+rm -f results/original/sum_amount_1m_original_ring8192_scale35_first45_repeat3.csv
 
 ./build/utility_bench \
   --data data/generated/custom_1m/transactions.csv \
@@ -91,9 +95,9 @@ rm -f results/original/sum_amount_1m_original_ring8192_scale40_first50_repeat3.c
   --ckks-ring-dim 8192 \
   --ckks-batch-size 0 \
   --ckks-depth 1 \
-  --ckks-scale-bits 40 \
-  --ckks-first-mod-bits 50 \
-  --results results/original/sum_amount_1m_original_ring8192_scale40_first50_repeat3.csv
+  --ckks-scale-bits 35 \
+  --ckks-first-mod-bits 45 \
+  --results results/original/sum_amount_1m_original_ring8192_scale35_first45_repeat3.csv
 ```
 
 ## Optimized Code 1m Run With Hard 8192 Ring
@@ -101,28 +105,6 @@ rm -f results/original/sum_amount_1m_original_ring8192_scale40_first50_repeat3.c
 The optimized executable defaults to `--ckks-ring-dim 8192`, but the command
 keeps the value explicit so result files are self-explanatory. Security remains
 OpenFHE `HEStd_128_classic` inside the code.
-
-```bash
-rm -f results/optimized_add/sum_amount_opt_1m_ring8192_scale40_first50.csv
-
-./build/sum_amount_opt_bench \
-  --data data/generated/custom_1m/transactions.csv \
-  --backend all \
-  --variant both \
-  --threads 1 \
-  --repeat 3 \
-  --ckks-ring-dim 8192 \
-  --ckks-batch-size 0 \
-  --ckks-depth 1 \
-  --ckks-scale-bits 40 \
-  --ckks-first-mod-bits 50 \
-  --results results/optimized_add/sum_amount_opt_1m_ring8192_scale40_first50.csv
-```
-
-## Lower-Q Fallback If Ring 8192 Rejects
-
-If OpenFHE rejects ring `8192` with `scale=40` and `first=50`, try a smaller
-`Q` while keeping 128-bit security.
 
 ```bash
 rm -f results/optimized_add/sum_amount_opt_1m_ring8192_scale35_first45.csv
@@ -141,6 +123,28 @@ rm -f results/optimized_add/sum_amount_opt_1m_ring8192_scale35_first45.csv
   --results results/optimized_add/sum_amount_opt_1m_ring8192_scale35_first45.csv
 ```
 
+## Lower-Q Fallback If Ring 8192 Rejects
+
+If OpenFHE rejects ring `8192` with `scale=35` and `first=45`, try a smaller
+`Q` while keeping 128-bit security.
+
+```bash
+rm -f results/optimized_add/sum_amount_opt_1m_ring8192_scale30_first40.csv
+
+./build/sum_amount_opt_bench \
+  --data data/generated/custom_1m/transactions.csv \
+  --backend all \
+  --variant both \
+  --threads 1 \
+  --repeat 3 \
+  --ckks-ring-dim 8192 \
+  --ckks-batch-size 0 \
+  --ckks-depth 1 \
+  --ckks-scale-bits 30 \
+  --ckks-first-mod-bits 40 \
+  --results results/optimized_add/sum_amount_opt_1m_ring8192_scale30_first40.csv
+```
+
 ## What To Compare
 
 Use rows where:
@@ -155,7 +159,7 @@ Compare:
 ```text
 results/original/...scale50_first60...
 results/original/...scale40_first50...
-results/original/...ring8192_scale40_first50...
+results/original/...ring8192_scale35_first45...
 results/optimized_add/...sum_amount_opt...
 ```
 
