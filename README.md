@@ -12,6 +12,7 @@ OpenFHE CKKS packed `EvalSum` implementation.
 - [Dense 4x8 layer benchmark](docs/DENSE_LAYER_BENCH_PLAN.md)
 - [Tiny trig function-eval benchmark](docs/FUNCTION_EVAL_TRIG_BENCH_PLAN.md)
 - [Rolling average CKKS benchmark](docs/ROLLING_AVG_BENCH_PLAN.md)
+- [OpenFHE optimization plan](docs/OPTIMIZATION_PLAN.md)
 - [PSI + OpenFHE join plan](docs/PSI_OPENFHE_JOIN_PLAN.md)
 - [PSI install notes](docs/PSI_INSTALL.md)
 

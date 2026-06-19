@@ -29,6 +29,12 @@ end_to_end_slowdown =
     / plain_compute_time
 ```
 
+For optimization work, also keep the separate checklist in
+[docs/OPTIMIZATION_PLAN.md](docs/OPTIMIZATION_PLAN.md). In short: do not trust
+speed claims unless they disclose packing, actual OpenFHE parameters, setup
+inclusion, build flags, thread count, and whether constants/preprocessing were
+reused.
+
 ## Baselines
 
 Use more than one baseline, but keep them clearly separated.
