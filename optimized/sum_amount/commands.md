@@ -106,6 +106,14 @@ The optimized executable defaults to `--ckks-ring-dim 8192`, but the command
 keeps the value explicit so result files are self-explanatory. Security remains
 OpenFHE `HEStd_128_classic` inside the code.
 
+`--variant both` runs:
+
+```text
+linear_add
+tree_add
+add_then_sum
+```
+
 ```bash
 rm -f results/optimized_add/sum_amount_opt_1m_ring8192_scale30_first40.csv
 
@@ -121,6 +129,25 @@ rm -f results/optimized_add/sum_amount_opt_1m_ring8192_scale30_first40.csv
   --ckks-scale-bits 30 \
   --ckks-first-mod-bits 40 \
   --results results/optimized_add/sum_amount_opt_1m_ring8192_scale30_first40.csv
+```
+
+To run only the main optimization candidate:
+
+```bash
+rm -f results/optimized_add/sum_amount_opt_1m_ring8192_scale30_first40_add_then_sum.csv
+
+./build/sum_amount_opt_bench \
+  --data data/generated/custom_1m/transactions.csv \
+  --backend openfhe_ckks \
+  --variant add_then_sum \
+  --threads 1 \
+  --repeat 3 \
+  --ckks-ring-dim 8192 \
+  --ckks-batch-size 0 \
+  --ckks-depth 1 \
+  --ckks-scale-bits 30 \
+  --ckks-first-mod-bits 40 \
+  --results results/optimized_add/sum_amount_opt_1m_ring8192_scale30_first40_add_then_sum.csv
 ```
 
 ## Accuracy Fallback If 30/40 Is Too Noisy

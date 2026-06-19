@@ -35,6 +35,7 @@ enum class BackendMode {
 enum class AddVariant {
     LinearAdd,
     TreeAdd,
+    AddThenSum,
     Both,
 };
 
@@ -65,7 +66,7 @@ void print_usage(const char* program) {
     std::cerr
         << "Usage: " << program << " [--data transactions.csv] "
         << "[--backend plain_cpp|openfhe_ckks|all] "
-        << "[--variant linear_add|tree_add|both] "
+        << "[--variant linear_add|tree_add|add_then_sum|both] "
         << "[--threads 1] [--repeat 3] [--max-rows 100000] "
         << "[--ckks-ring-dim 8192] [--ckks-batch-size 0] "
         << "[--ckks-depth 1] [--ckks-scale-bits 30] [--ckks-first-mod-bits 40] "
@@ -91,6 +92,9 @@ AddVariant parse_add_variant(const std::string& value) {
     }
     if (value == "tree_add") {
         return AddVariant::TreeAdd;
+    }
+    if (value == "add_then_sum") {
+        return AddVariant::AddThenSum;
     }
     if (value == "both") {
         return AddVariant::Both;
@@ -248,6 +252,20 @@ double divide_or_zero(double numerator, double denominator) {
 
 std::size_t ceil_div(std::size_t numerator, std::size_t denominator) {
     return (numerator + denominator - 1) / denominator;
+}
+
+std::size_t ceil_log2_nonzero(std::size_t value) {
+    if (value == 0) {
+        return 0;
+    }
+
+    std::size_t rotations = 0;
+    --value;
+    while (value > 0) {
+        value >>= 1;
+        ++rotations;
+    }
+    return rotations;
 }
 
 std::string repeat_note(std::size_t repeat_index, std::size_t repeat_count) {
@@ -444,14 +462,14 @@ BenchmarkResult run_openfhe_sum_amount_variant(
 
     for (std::size_t offset = 0; offset < data.size(); offset += slots_per_ciphertext) {
         const std::size_t used_slots = std::min(slots_per_ciphertext, data.size() - offset);
-        std::vector<double> packed_values;
-        packed_values.reserve(used_slots);
+        std::vector<double> packed_values(slots_per_ciphertext, 0.0);
         for (std::size_t i = 0; i < used_slots; ++i) {
-            packed_values.push_back(data.amount[offset + i]);
+            packed_values[i] = data.amount[offset + i];
         }
 
         const Timer encode_timer;
-        Plaintext plaintext = cc->MakeCKKSPackedPlaintext(packed_values);
+        Plaintext plaintext = cc->MakeCKKSPackedPlaintext(
+            packed_values, 1, 0, nullptr, static_cast<uint32_t>(slots_per_ciphertext));
         encode_time_ms += encode_timer.elapsed_ms();
 
         const Timer encrypt_timer;
@@ -459,15 +477,31 @@ BenchmarkResult run_openfhe_sum_amount_variant(
         encrypt_time_ms += encrypt_timer.elapsed_ms();
 
         const Timer eval_timer;
-        auto chunk_sum = cc->EvalSum(ciphertext, static_cast<uint32_t>(used_slots));
-        if (variant == AddVariant::TreeAdd) {
-            chunk_sums.push_back(chunk_sum);
-        } else if (has_total) {
-            total_ciphertext = cc->EvalAdd(total_ciphertext, chunk_sum);
+        if (variant == AddVariant::AddThenSum) {
+            if (has_total) {
+                total_ciphertext = cc->EvalAdd(total_ciphertext, ciphertext);
+            } else {
+                total_ciphertext = ciphertext;
+                has_total = true;
+            }
         } else {
-            total_ciphertext = chunk_sum;
-            has_total = true;
+            auto chunk_sum = cc->EvalSum(ciphertext, static_cast<uint32_t>(used_slots));
+            if (variant == AddVariant::TreeAdd) {
+                chunk_sums.push_back(chunk_sum);
+            } else if (has_total) {
+                total_ciphertext = cc->EvalAdd(total_ciphertext, chunk_sum);
+            } else {
+                total_ciphertext = chunk_sum;
+                has_total = true;
+            }
         }
+        he_eval_time_ms += eval_timer.elapsed_ms();
+    }
+
+    if (variant == AddVariant::AddThenSum) {
+        const Timer eval_timer;
+        total_ciphertext = cc->EvalSum(
+            total_ciphertext, static_cast<uint32_t>(slots_per_ciphertext));
         he_eval_time_ms += eval_timer.elapsed_ms();
     }
 
@@ -505,7 +539,11 @@ BenchmarkResult run_openfhe_sum_amount_variant(
     const double relative_error = divide_or_zero(absolute_error, std::abs(baseline_value));
 
     const std::string variant_name =
-        variant == AddVariant::TreeAdd ? "tree_add" : "linear_add";
+        variant == AddVariant::TreeAdd
+            ? "tree_add"
+            : variant == AddVariant::AddThenSum
+            ? "add_then_sum"
+            : "linear_add";
 
     BenchmarkResult result;
     result.operation = "sum_amount_opt_" + variant_name;
@@ -537,7 +575,10 @@ BenchmarkResult run_openfhe_sum_amount_variant(
     result.multiplicative_depth = config.multiplicative_depth;
     result.scaling_mod_size = config.scaling_mod_size;
     result.first_mod_size = config.first_mod_size;
-    result.rotation_count_reported = 0;
+    result.rotation_count_reported =
+        variant == AddVariant::AddThenSum
+            ? ceil_log2_nonzero(slots_per_ciphertext)
+            : ciphertext_count * ceil_log2_nonzero(slots_per_ciphertext);
     result.notes = "src_optimized;sum_amount_only;variant=" + variant_name +
 #ifdef _OPENMP
         ";omp_set_num_threads;setup_recorded_separately;encrypt_decrypt_in_total";
@@ -605,7 +646,8 @@ int main(int argc, char** argv) {
             config.first_mod_size = args.ckks_first_mod_bits;
 
             for (const std::size_t thread_count : args.thread_counts) {
-                for (const AddVariant variant : {AddVariant::LinearAdd, AddVariant::TreeAdd}) {
+                for (const AddVariant variant :
+                     {AddVariant::LinearAdd, AddVariant::TreeAdd, AddVariant::AddThenSum}) {
                     if (!wants_variant(args.variant, variant)) {
                         continue;
                     }

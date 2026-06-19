@@ -26,8 +26,9 @@ Current variants:
 | --- | --- |
 | `linear_add` | Mirrors the reference chunk-sum accumulation shape. Useful as the separated optimized-code baseline. |
 | `tree_add` | Computes each encrypted chunk sum, then combines chunk sums with a binary EvalAdd tree. This may reduce serial dependency when there are many chunks. |
+| `add_then_sum` | Adds packed ciphertext chunks slot-wise first, then runs one final `EvalSum`. This reduces many expensive chunk-level `EvalSum` calls to one. |
 
-Both variants compute the same scalar `SUM(amount)` and must be compared
+All variants compute the same scalar `SUM(amount)` and must be compared
 against the reference `utility_bench --bench sum_amount` output.
 
 The executable defaults to:

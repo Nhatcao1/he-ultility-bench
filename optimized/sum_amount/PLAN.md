@@ -120,6 +120,7 @@ Current variants:
 | --- | --- |
 | `linear_add` | Separated optimized-code baseline that mirrors the reference chunk-sum accumulation shape. |
 | `tree_add` | First candidate optimization: compute chunk sums, then combine them with a binary `EvalAdd` tree. |
+| `add_then_sum` | Main additive optimization: add packed ciphertext chunks slot-wise first, then run one final `EvalSum`. |
 
 The runner defaults to one OpenFHE thread and three repeats:
 
@@ -188,6 +189,7 @@ Use these options for `SUM(amount)` first:
 | Lower `scalingModSize` / first modulus bits | Try now | Smaller `Q` may permit smaller/faster parameters if accuracy stays good. |
 | Hard ring `8192` at 128-bit | Try now | Accept only if OpenFHE permits it with chosen `Q`. |
 | Binary-tree chunk add | Try now in optimized code | Isolated first code-level variant: `tree_add`. |
+| Add chunks before `EvalSum` | Try now in optimized code | Replaces many expensive `EvalSum` calls with cheap `EvalAdd` calls plus one final `EvalSum`. |
 | Parallelize across ciphertext chunks | Later | First get clean one-thread repeat summaries. |
 | Memory pools / reused buffers | Later | Useful only after bigger packing/Q effects are understood. |
 | Pack output channels | Not for sum | Relevant to dense/matrix/ML tests, not one scalar sum. |
@@ -200,7 +202,7 @@ Experiment order:
 1. Original code, normal Q, auto ring.
 2. Original code, lower Q, auto ring.
 3. Original code, lower Q, hard ring 8192.
-4. Optimized code, lower Q, hard ring 8192, linear_add vs tree_add.
+4. Optimized code, lower Q, hard ring 8192, compare `linear_add`, `tree_add`, and `add_then_sum`.
 5. If rejected, lower Q further and repeat.
 ```
 
@@ -225,6 +227,34 @@ faster than original OpenFHE in either eval-only or total HE time
 If a variant is only faster because it changes precision, ring security, setup
 inclusion, or input packing assumptions, record that clearly instead of calling
 it a general speedup.
+
+## `add_then_sum` Diagram
+
+Tiny example with values `[1..10]` and four CKKS slots:
+
+```text
+ct0 = Enc([1, 2,  3, 4])
+ct1 = Enc([5, 6,  7, 8])
+ct2 = Enc([9, 10, 0, 0])
+
+EvalAdd chunks slot-wise:
+
+ct_total = ct0 + ct1 + ct2
+         = Enc([15, 18, 10, 12])
+
+One EvalSum:
+
+EvalSum(ct_total) = Enc(15 + 18 + 10 + 12)
+                  = Enc(55)
+```
+
+This is the same result as:
+
+```text
+EvalSum(ct0) + EvalSum(ct1) + EvalSum(ct2)
+```
+
+but it uses one expensive `EvalSum` instead of one `EvalSum` per chunk.
 
 ## Do Not Optimize By
 
