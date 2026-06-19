@@ -36,7 +36,11 @@ Use these result folders when running on the server:
 ```text
 results/original/
 results/optimized/
+results/optimized_add/
 results/comparisons/
 ```
+
+Use `results/optimized_add/` for additive aggregation optimization work such
+as `sum_amount`. Keep generic future optimized outputs in `results/optimized/`.
 
 Generated result files stay ignored by Git.

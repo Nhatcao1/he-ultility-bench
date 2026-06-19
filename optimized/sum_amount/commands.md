@@ -69,7 +69,7 @@ Use this only after the reference run is correct. Keep one result file per
 parameter choice so the comparison stays readable.
 
 ```bash
-rm -f results/original/sum_amount_100k_batch4096.csv
+rm -f results/optimized_add/sum_amount_100k_batch4096.csv
 
 ./build/utility_bench \
   --data data/generated/medium_100k/transactions.csv \
@@ -81,7 +81,7 @@ rm -f results/original/sum_amount_100k_batch4096.csv
   --ckks-depth 1 \
   --ckks-scale-bits 50 \
   --ckks-first-mod-bits 60 \
-  --results results/original/sum_amount_100k_batch4096.csv
+  --results results/optimized_add/sum_amount_100k_batch4096.csv
 ```
 
 ## Future Optimized Run
@@ -98,5 +98,5 @@ This command is intentionally a placeholder until `sum_amount_opt_bench` exists.
   --ckks-depth 1 \
   --ckks-scale-bits 50 \
   --ckks-first-mod-bits 60 \
-  --results results/optimized/sum_amount_100k.csv
+  --results results/optimized_add/sum_amount_100k.csv
 ```
