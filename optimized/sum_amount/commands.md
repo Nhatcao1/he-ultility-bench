@@ -188,34 +188,17 @@ rm -f results/optimized_add/sum_amount_100k_ring8192_scale40_first50.csv
   --results results/optimized_add/sum_amount_100k_ring8192_scale40_first50.csv
 ```
 
-## Future Optimized Run
+## Optimized 1m Run With Hard 8192 Ring
 
-The optimized executable is separate from the reference executable. Start with
-the same 100k input and low-`Q` parameters we want to investigate.
-
-```bash
-rm -f results/optimized_add/sum_amount_opt_100k_scale40_first50.csv
-
-./build/sum_amount_opt_bench \
-  --data data/generated/medium_100k/transactions.csv \
-  --backend all \
-  --variant both \
-  --threads 1 4 8 \
-  --ckks-ring-dim 0 \
-  --ckks-batch-size 0 \
-  --ckks-depth 1 \
-  --ckks-scale-bits 40 \
-  --ckks-first-mod-bits 50 \
-  --results results/optimized_add/sum_amount_opt_100k_scale40_first50.csv
-```
-
-For the explicit smaller-ring trial:
+The optimized executable defaults to `--ckks-ring-dim 8192`, but the command
+keeps the value explicit so result files are self-explanatory. Security remains
+OpenFHE `HEStd_128_classic` inside the code.
 
 ```bash
-rm -f results/optimized_add/sum_amount_opt_100k_ring8192_scale40_first50.csv
+rm -f results/optimized_add/sum_amount_opt_1m_ring8192_scale40_first50.csv
 
 ./build/sum_amount_opt_bench \
-  --data data/generated/medium_100k/transactions.csv \
+  --data data/generated/custom_1m/transactions.csv \
   --backend all \
   --variant both \
   --threads 1 4 8 \
@@ -224,5 +207,23 @@ rm -f results/optimized_add/sum_amount_opt_100k_ring8192_scale40_first50.csv
   --ckks-depth 1 \
   --ckks-scale-bits 40 \
   --ckks-first-mod-bits 50 \
-  --results results/optimized_add/sum_amount_opt_100k_ring8192_scale40_first50.csv
+  --results results/optimized_add/sum_amount_opt_1m_ring8192_scale40_first50.csv
+```
+
+If OpenFHE rejects that, try a smaller `Q` while keeping 128-bit security:
+
+```bash
+rm -f results/optimized_add/sum_amount_opt_1m_ring8192_scale35_first45.csv
+
+./build/sum_amount_opt_bench \
+  --data data/generated/custom_1m/transactions.csv \
+  --backend all \
+  --variant both \
+  --threads 1 4 8 \
+  --ckks-ring-dim 8192 \
+  --ckks-batch-size 0 \
+  --ckks-depth 1 \
+  --ckks-scale-bits 35 \
+  --ckks-first-mod-bits 45 \
+  --results results/optimized_add/sum_amount_opt_1m_ring8192_scale35_first45.csv
 ```

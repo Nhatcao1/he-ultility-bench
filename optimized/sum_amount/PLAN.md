@@ -121,6 +121,21 @@ Current variants:
 | `linear_add` | Separated optimized-code baseline that mirrors the reference chunk-sum accumulation shape. |
 | `tree_add` | First candidate optimization: compute chunk sums, then combine them with a binary `EvalAdd` tree. |
 
+The optimized target defaults to an explicit ring-dimension experiment:
+
+```text
+security level = OpenFHE HEStd_128_classic
+requested ring dimension = 8192
+depth = 1
+scale bits = 40
+first modulus bits = 50
+```
+
+This is intentionally aggressive. If OpenFHE rejects these parameters, the
+result is still useful: it means this `Q` is too large for ring `8192` at
+128-bit classic security. The next move is to lower `scale bits` /
+`first modulus bits`, not to lower security.
+
 ## Candidate Code Optimizations Later
 
 | Candidate | Expected benefit | Notes |

@@ -29,3 +29,17 @@ Current variants:
 
 Both variants compute the same scalar `SUM(amount)` and must be compared
 against the reference `utility_bench --bench sum_amount` output.
+
+Default optimized-target parameters are intentionally aggressive for additive
+testing:
+
+```text
+security level = OpenFHE HEStd_128_classic
+requested ring dimension = 8192
+scale bits = 40
+first modulus bits = 50
+depth = 1
+```
+
+If OpenFHE rejects ring dimension `8192`, keep 128-bit security and reduce the
+modulus settings instead of lowering security.

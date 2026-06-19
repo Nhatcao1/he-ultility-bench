@@ -44,7 +44,7 @@ struct CliArgs {
     AddVariant variant = AddVariant::Both;
     std::vector<std::size_t> thread_counts = {1, 4, 8};
     std::size_t max_rows = 0;
-    std::size_t ckks_ring_dim = 0;
+    std::size_t ckks_ring_dim = 8192;
     std::size_t ckks_batch_size = 0;
     std::size_t ckks_depth = 1;
     std::size_t ckks_scale_bits = 40;
@@ -52,7 +52,7 @@ struct CliArgs {
 };
 
 struct CkksOptConfig {
-    std::size_t requested_ring_dimension = 0;
+    std::size_t requested_ring_dimension = 8192;
     std::size_t batch_size = 0;
     std::size_t multiplicative_depth = 1;
     std::size_t scaling_mod_size = 40;
@@ -65,7 +65,7 @@ void print_usage(const char* program) {
         << "[--backend plain_cpp|openfhe_ckks|all] "
         << "[--variant linear_add|tree_add|both] "
         << "[--threads 1 4 8] [--max-rows 100000] "
-        << "[--ckks-ring-dim 0] [--ckks-batch-size 0] "
+        << "[--ckks-ring-dim 8192] [--ckks-batch-size 0] "
         << "[--ckks-depth 1] [--ckks-scale-bits 40] [--ckks-first-mod-bits 50] "
         << "[--results results/optimized_add/sum_amount_opt.csv]\n";
 }
