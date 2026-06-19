@@ -30,6 +30,15 @@ Current variants:
 Both variants compute the same scalar `SUM(amount)` and must be compared
 against the reference `utility_bench --bench sum_amount` output.
 
+The executable defaults to:
+
+```text
+threads = 1
+repeat count = 3
+```
+
+It writes each repeat row plus a `_summary_avg` row for each repeated test.
+
 Default optimized-target parameters are intentionally aggressive for additive
 testing:
 

@@ -121,6 +121,17 @@ Current variants:
 | `linear_add` | Separated optimized-code baseline that mirrors the reference chunk-sum accumulation shape. |
 | `tree_add` | First candidate optimization: compute chunk sums, then combine them with a binary `EvalAdd` tree. |
 
+The runner defaults to one OpenFHE thread and three repeats:
+
+```text
+threads = 1
+repeat_count = 3
+```
+
+Each repeat is written to the result CSV, followed by a `_summary_avg` row for
+the repeated test. Start with this one-thread protocol before running
+multi-thread sweeps.
+
 The optimized target defaults to an explicit ring-dimension experiment:
 
 ```text

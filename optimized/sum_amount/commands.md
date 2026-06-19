@@ -201,7 +201,8 @@ rm -f results/optimized_add/sum_amount_opt_1m_ring8192_scale40_first50.csv
   --data data/generated/custom_1m/transactions.csv \
   --backend all \
   --variant both \
-  --threads 1 4 8 \
+  --threads 1 \
+  --repeat 3 \
   --ckks-ring-dim 8192 \
   --ckks-batch-size 0 \
   --ckks-depth 1 \
@@ -219,7 +220,8 @@ rm -f results/optimized_add/sum_amount_opt_1m_ring8192_scale35_first45.csv
   --data data/generated/custom_1m/transactions.csv \
   --backend all \
   --variant both \
-  --threads 1 4 8 \
+  --threads 1 \
+  --repeat 3 \
   --ckks-ring-dim 8192 \
   --ckks-batch-size 0 \
   --ckks-depth 1 \

@@ -18,6 +18,7 @@
 #include <exception>
 #include <filesystem>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -42,7 +43,8 @@ struct CliArgs {
     std::filesystem::path results_path = "results/optimized_add/sum_amount_opt.csv";
     BackendMode backend = BackendMode::All;
     AddVariant variant = AddVariant::Both;
-    std::vector<std::size_t> thread_counts = {1, 4, 8};
+    std::vector<std::size_t> thread_counts = {1};
+    std::size_t repeat_count = 3;
     std::size_t max_rows = 0;
     std::size_t ckks_ring_dim = 8192;
     std::size_t ckks_batch_size = 0;
@@ -64,7 +66,7 @@ void print_usage(const char* program) {
         << "Usage: " << program << " [--data transactions.csv] "
         << "[--backend plain_cpp|openfhe_ckks|all] "
         << "[--variant linear_add|tree_add|both] "
-        << "[--threads 1 4 8] [--max-rows 100000] "
+        << "[--threads 1] [--repeat 3] [--max-rows 100000] "
         << "[--ckks-ring-dim 8192] [--ckks-batch-size 0] "
         << "[--ckks-depth 1] [--ckks-scale-bits 40] [--ckks-first-mod-bits 50] "
         << "[--results results/optimized_add/sum_amount_opt.csv]\n";
@@ -166,6 +168,17 @@ CliArgs parse_args(int argc, char** argv) {
             continue;
         }
 
+        if (flag == "--repeat") {
+            if (i + 1 >= argc) {
+                throw std::runtime_error("--repeat requires a value");
+            }
+            args.repeat_count = static_cast<std::size_t>(std::stoull(argv[++i]));
+            if (args.repeat_count == 0) {
+                throw std::runtime_error("--repeat must be positive");
+            }
+            continue;
+        }
+
         if (flag == "--max-rows") {
             if (i + 1 >= argc) {
                 throw std::runtime_error("--max-rows requires a value");
@@ -235,6 +248,75 @@ double divide_or_zero(double numerator, double denominator) {
 
 std::size_t ceil_div(std::size_t numerator, std::size_t denominator) {
     return (numerator + denominator - 1) / denominator;
+}
+
+std::string repeat_note(std::size_t repeat_index, std::size_t repeat_count) {
+    return "repeat_index=" + std::to_string(repeat_index) +
+           ";repeat_count=" + std::to_string(repeat_count);
+}
+
+double average_field(
+    const std::vector<BenchmarkResult>& results,
+    double BenchmarkResult::*field) {
+    double sum = 0.0;
+    for (const auto& result : results) {
+        sum += result.*field;
+    }
+    return divide_or_zero(sum, static_cast<double>(results.size()));
+}
+
+BenchmarkResult summarize_results(
+    const std::vector<BenchmarkResult>& results,
+    const std::string& operation,
+    const std::string& backend) {
+    if (results.empty()) {
+        throw std::runtime_error("cannot summarize empty benchmark result list");
+    }
+
+    BenchmarkResult summary = results.front();
+    summary.operation = operation + "_summary_avg";
+    summary.backend = backend + "_summary";
+    summary.plain_time_ms = average_field(results, &BenchmarkResult::plain_time_ms);
+    summary.setup_time_ms = average_field(results, &BenchmarkResult::setup_time_ms);
+    summary.encode_time_ms = average_field(results, &BenchmarkResult::encode_time_ms);
+    summary.encrypt_time_ms = average_field(results, &BenchmarkResult::encrypt_time_ms);
+    summary.he_eval_time_ms = average_field(results, &BenchmarkResult::he_eval_time_ms);
+    summary.decrypt_time_ms = average_field(results, &BenchmarkResult::decrypt_time_ms);
+    summary.decode_time_ms = average_field(results, &BenchmarkResult::decode_time_ms);
+    summary.total_he_time_ms = average_field(results, &BenchmarkResult::total_he_time_ms);
+    summary.operation_slowdown = average_field(results, &BenchmarkResult::operation_slowdown);
+    summary.end_to_end_slowdown = average_field(results, &BenchmarkResult::end_to_end_slowdown);
+    summary.result_value = average_field(results, &BenchmarkResult::result_value);
+    summary.baseline_value = average_field(results, &BenchmarkResult::baseline_value);
+    summary.absolute_error = average_field(results, &BenchmarkResult::absolute_error);
+    summary.relative_error = average_field(results, &BenchmarkResult::relative_error);
+    summary.slot_utilization = average_field(results, &BenchmarkResult::slot_utilization);
+
+    double min_total = results.front().total_he_time_ms;
+    double max_total = results.front().total_he_time_ms;
+    double min_eval = results.front().he_eval_time_ms;
+    double max_eval = results.front().he_eval_time_ms;
+    double min_plain = results.front().plain_time_ms;
+    double max_plain = results.front().plain_time_ms;
+    for (const auto& result : results) {
+        min_total = std::min(min_total, result.total_he_time_ms);
+        max_total = std::max(max_total, result.total_he_time_ms);
+        min_eval = std::min(min_eval, result.he_eval_time_ms);
+        max_eval = std::max(max_eval, result.he_eval_time_ms);
+        min_plain = std::min(min_plain, result.plain_time_ms);
+        max_plain = std::max(max_plain, result.plain_time_ms);
+    }
+
+    std::ostringstream notes;
+    notes << "repeat_summary;repeat_count=" << results.size()
+          << ";min_plain_ms=" << min_plain
+          << ";max_plain_ms=" << max_plain
+          << ";min_eval_ms=" << min_eval
+          << ";max_eval_ms=" << max_eval
+          << ";min_total_ms=" << min_total
+          << ";max_total_ms=" << max_total;
+    summary.notes = notes.str();
+    return summary;
 }
 
 BenchmarkResult run_plain_sum_amount(const Transactions& data, std::size_t thread_count) {
@@ -484,11 +566,33 @@ int main(int argc, char** argv) {
         }
 
         const BenchmarkResult baseline = run_plain_sum_amount(data, 1);
+        std::vector<BenchmarkResult> plain_results;
+        plain_results.reserve(args.repeat_count);
+        plain_results.push_back(baseline);
+        for (std::size_t repeat_index = 2; repeat_index <= args.repeat_count; ++repeat_index) {
+            plain_results.push_back(run_plain_sum_amount(data, 1));
+        }
+        for (std::size_t repeat_index = 0; repeat_index < plain_results.size(); ++repeat_index) {
+            plain_results[repeat_index].notes += ";" +
+                repeat_note(repeat_index + 1, args.repeat_count);
+        }
+        const BenchmarkResult plain_summary =
+            summarize_results(plain_results, "sum_amount", "plain_cpp");
+
         if (wants_plain_cpp(args.backend)) {
-            append_result_csv(args.results_path, baseline);
-            std::cout << "Ran plain_cpp:sum_amount threads=1 in "
-                      << baseline.plain_time_ms << " ms value="
-                      << baseline.result_value << '\n';
+            for (std::size_t repeat_index = 0; repeat_index < plain_results.size(); ++repeat_index) {
+                const auto& plain_result = plain_results[repeat_index];
+                append_result_csv(args.results_path, plain_result);
+                std::cout << "Ran plain_cpp:sum_amount repeat="
+                          << (repeat_index + 1) << '/' << args.repeat_count
+                          << " threads=1 in "
+                          << plain_result.plain_time_ms << " ms value="
+                          << plain_result.result_value << '\n';
+            }
+            append_result_csv(args.results_path, plain_summary);
+            std::cout << "Summary plain_cpp:sum_amount repeats="
+                      << args.repeat_count << " avg_plain="
+                      << plain_summary.plain_time_ms << " ms\n";
         }
 
         if (wants_openfhe_ckks(args.backend)) {
@@ -505,20 +609,43 @@ int main(int argc, char** argv) {
                     if (!wants_variant(args.variant, variant)) {
                         continue;
                     }
-                    const auto result = run_openfhe_sum_amount_variant(
-                        data,
-                        thread_count,
-                        baseline.baseline_value,
-                        baseline.plain_time_ms,
-                        config,
-                        variant);
-                    append_result_csv(args.results_path, result);
-                    std::cout << "Ran " << result.backend << ':' << result.operation
-                              << " threads=" << result.threads
-                              << " total=" << result.total_he_time_ms
-                              << " ms eval=" << result.he_eval_time_ms
-                              << " ms abs_error=" << result.absolute_error
-                              << " rel_error=" << result.relative_error << '\n';
+                    std::vector<BenchmarkResult> he_results;
+                    he_results.reserve(args.repeat_count);
+                    for (std::size_t repeat_index = 1;
+                         repeat_index <= args.repeat_count;
+                         ++repeat_index) {
+                        auto result = run_openfhe_sum_amount_variant(
+                            data,
+                            thread_count,
+                            plain_summary.baseline_value,
+                            plain_summary.plain_time_ms,
+                            config,
+                            variant);
+                        result.notes += ";" + repeat_note(repeat_index, args.repeat_count);
+                        he_results.push_back(result);
+                        append_result_csv(args.results_path, he_results.back());
+                        std::cout << "Ran " << result.backend << ':' << result.operation
+                                  << " repeat=" << repeat_index << '/'
+                                  << args.repeat_count
+                                  << " threads=" << result.threads
+                                  << " total=" << result.total_he_time_ms
+                                  << " ms eval=" << result.he_eval_time_ms
+                                  << " ms abs_error=" << result.absolute_error
+                                  << " rel_error=" << result.relative_error << '\n';
+                    }
+                    const BenchmarkResult summary = summarize_results(
+                        he_results,
+                        he_results.front().operation,
+                        he_results.front().backend);
+                    append_result_csv(args.results_path, summary);
+                    std::cout << "Summary " << summary.backend << ':'
+                              << summary.operation
+                              << " threads=" << summary.threads
+                              << " repeats=" << args.repeat_count
+                              << " avg_total=" << summary.total_he_time_ms
+                              << " ms avg_eval=" << summary.he_eval_time_ms
+                              << " ms avg_rel_error=" << summary.relative_error
+                              << '\n';
                 }
             }
 #else
