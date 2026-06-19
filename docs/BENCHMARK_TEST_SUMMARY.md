@@ -404,6 +404,48 @@ for each output neuron j:
 This is a small dense neural-network layer. It is matrix-vector/matrix-output
 inference over encrypted input data with plaintext model weights.
 
+## Tiny Trig Function-Eval Benchmark
+
+This is run by `function_eval_bench`.
+
+Math:
+
+```text
+x = [-0.75, -0.50, -0.25, 0.00, 0.25, 0.50, 0.75]
+
+sin(x)
+cos(x)
+tan(x)
+```
+
+Plain baseline:
+
+```text
+std::sin(x)
+std::cos(x)
+std::tan(x)
+```
+
+HE behind the scenes:
+
+```text
+x vector
+  -> pack into CKKS slots
+  -> encrypt
+  -> EvalSin / EvalCos / EvalChebyshevFunction(tan)
+  -> decrypt vector
+  -> compare each slot against C++ baseline
+```
+
+Default degree sweep:
+
+```text
+15, 30, 45
+```
+
+This tests Chebyshev function approximation, multiplicative depth pressure,
+and approximation error on a tiny inspectable vector.
+
 ## Federated Averaging Benchmark
 
 This is run by `fedavg_bench`.
@@ -451,6 +493,7 @@ decrypt.
 | Ciphertext-plaintext multiplication | `weighted_sum_amount_risk`, rolling average mask, polynomial coefficients, FedAvg alpha |
 | Ciphertext-ciphertext multiplication | `weighted_sum_amount_risk_encrypted`, polynomial powers |
 | Dense layer matrix math | `dense_layer_bench` |
+| Chebyshev function evaluation | `function_eval_bench` |
 | Slot rotations | `rolling_avg_amount_w3/w5/w9` |
 | Slot reduction / aggregation | `sum_amount`, weighted sums, rolling average scalar result, polynomial scores |
 | Scheme-switching comparison | `compare_amount_gt_5000` |

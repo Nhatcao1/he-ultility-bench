@@ -10,6 +10,7 @@ OpenFHE CKKS packed `EvalSum` implementation.
 - [FedAvg merge benchmark](docs/FEDAVG_BENCH_PLAN.md)
 - [Polynomial ML CKKS benchmark](docs/POLY_ML_BENCH_PLAN.md)
 - [Dense 4x8 layer benchmark](docs/DENSE_LAYER_BENCH_PLAN.md)
+- [Tiny trig function-eval benchmark](docs/FUNCTION_EVAL_TRIG_BENCH_PLAN.md)
 - [Rolling average CKKS benchmark](docs/ROLLING_AVG_BENCH_PLAN.md)
 - [PSI + OpenFHE join plan](docs/PSI_OPENFHE_JOIN_PLAN.md)
 - [PSI install notes](docs/PSI_INSTALL.md)
@@ -126,6 +127,24 @@ rm -f results/dense_layer_100k.csv
   --ckks-scale-bits 50 \
   --ckks-first-mod-bits 60 \
   --results results/dense_layer_100k.csv
+```
+
+Run tiny trig function-evaluation benchmarks:
+
+```bash
+rm -f results/function_eval_trig_tiny.csv
+
+./build/function_eval_bench \
+  --bench all_trig_tiny \
+  --degrees 15 30 45 \
+  --backend all \
+  --threads 1 4 8 \
+  --ckks-ring-dim 0 \
+  --ckks-batch-size 0 \
+  --ckks-depth 0 \
+  --ckks-scale-bits 50 \
+  --ckks-first-mod-bits 60 \
+  --results results/function_eval_trig_tiny.csv
 ```
 
 Run the FedAvg benchmark:
