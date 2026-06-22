@@ -28,6 +28,7 @@ before we care about speed.
 | Track | Status | Notes |
 | --- | --- | --- |
 | `sum_amount` | Planned | First target because it is the simplest aggregation and shows packing/rotation behavior clearly. |
+| `rolling_avg` | Planning | Rotation-heavy benchmark; optimize Schema A vector path before scalar reduction. |
 
 ## Result Layout
 
@@ -37,6 +38,7 @@ Use these result folders when running on the server:
 results/original/
 results/optimized/
 results/optimized_add/
+results/optimized_rolling/
 results/comparisons/
 ```
 
