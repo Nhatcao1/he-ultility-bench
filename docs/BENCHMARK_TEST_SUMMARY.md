@@ -53,18 +53,22 @@ amount column
   -> encrypt packed CKKS amount chunks
 
 risk_weight column
-  -> keep as plaintext packed vector
+  -> encrypt packed CKKS risk_weight chunks
 
-encrypted amount * plaintext risk_weight
-  -> EvalMult(cipher_amount, plain_weight)
+encrypted amount * encrypted risk_weight
+  -> EvalMult(cipher_amount, cipher_weight)
   -> EvalSum weighted values
   -> EvalAdd chunk totals
   -> decrypt one scalar total
 ```
 
-Main HE operations: ciphertext-plaintext multiply, `EvalSum`, `EvalAdd`.
+Main HE operations: ciphertext-ciphertext multiply, rescale/noise growth,
+`EvalSum`, `EvalAdd`.
 
 ## `weighted_sum_amount_risk_encrypted`
+
+Compatibility alias for `weighted_sum_amount_risk`. Both names now use the
+all-encrypted path.
 
 Math:
 

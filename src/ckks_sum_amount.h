@@ -336,16 +336,20 @@ inline BenchmarkResult openfhe_ckks_weighted_sum_amount_risk(
             "risk_weight_by_row is missing; load customers.csv before weighted CKKS benchmarks");
     }
 
+    CkksSumConfig encrypted_config = config;
+    encrypted_config.multiplicative_depth =
+        std::max<std::size_t>(encrypted_config.multiplicative_depth, 2);
+
     return openfhe_ckks_sum_amount(
         data,
         "weighted_sum_amount_risk",
         data.amount,
-        &data.risk_weight_by_row,
         nullptr,
+        &data.risk_weight_by_row,
         thread_count,
         baseline_value,
         plain_time_ms,
-        config);
+        encrypted_config);
 }
 
 inline BenchmarkResult openfhe_ckks_weighted_sum_amount_risk_encrypted(
@@ -363,9 +367,9 @@ inline BenchmarkResult openfhe_ckks_weighted_sum_amount_risk_encrypted(
     encrypted_config.multiplicative_depth =
         std::max<std::size_t>(encrypted_config.multiplicative_depth, 2);
 
-    return openfhe_ckks_sum_amount(
+    auto result = openfhe_ckks_sum_amount(
         data,
-        "weighted_sum_amount_risk_encrypted",
+        "weighted_sum_amount_risk",
         data.amount,
         nullptr,
         &data.risk_weight_by_row,
@@ -373,6 +377,9 @@ inline BenchmarkResult openfhe_ckks_weighted_sum_amount_risk_encrypted(
         baseline_value,
         plain_time_ms,
         encrypted_config);
+    result.operation = "weighted_sum_amount_risk_encrypted";
+    result.notes += ";alias_of_weighted_sum_amount_risk_all_encrypted";
+    return result;
 }
 
 inline BenchmarkResult openfhe_ckks_rolling_avg_amount(

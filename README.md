@@ -298,8 +298,8 @@ rm -f results/benchmark_results_weighted_sum.csv
   --bench weighted_sum_amount_risk \
   --backend all \
   --threads 1 4 8 \
-  --ckks-ring-dim 16384 \
-  --ckks-depth 1 \
+  --ckks-ring-dim 0 \
+  --ckks-depth 2 \
   --ckks-scale-bits 50 \
   --ckks-first-mod-bits 60 \
   --results results/benchmark_results_weighted_sum.csv
@@ -307,6 +307,8 @@ rm -f results/benchmark_results_weighted_sum.csv
 
 The weighted benchmark automatically reads `customers.csv` from the same
 dataset folder. Use `--customers path/to/customers.csv` to override it.
+The OpenFHE path encrypts both `amount` and the expanded `risk_weight` vector
+before multiplying them.
 Use `--bench all_agg` to run both aggregate benchmarks, `sum_amount` and
 `weighted_sum_amount_risk`. `all_agg` does not include encrypted comparison
 benchmarks.
@@ -385,10 +387,11 @@ rm -f results/benchmark_results_join_weighted_sum_encrypted_100k.csv
   --results results/benchmark_results_join_weighted_sum_encrypted_100k.csv
 ```
 
-This encrypts both `amount` and the expanded `risk_weight` vector before the
-homomorphic multiply. The current medium join path still expands
-`customer_id -> risk_weight` before encryption; fully encrypted join-key
-matching is a separate encrypted equality/join problem.
+`weighted_sum_amount_risk_encrypted` is kept as an explicit alias for
+`weighted_sum_amount_risk`; both encrypt `amount` and the expanded
+`risk_weight` vector before the homomorphic multiply. The current medium join
+path still expands `customer_id -> risk_weight` before encryption; fully
+encrypted join-key matching is a separate encrypted equality/join problem.
 
 OpenFHE encrypted comparison only for `amount > 5000`:
 
