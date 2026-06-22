@@ -111,24 +111,37 @@ So `w=9` is much heavier than `w=3`, and Schema B is heavier than Schema A.
 
 ## Candidate Variants
 
-### `vector_reference_copy`
+### `shared_rotations_w3_w5_w9_vector`
 
-Separated optimized-code baseline that mirrors `rolling_avg_vector_w*`.
+Implemented first optimized-code candidate.
 
 Purpose:
 
 ```text
-Prove the optimized executable matches reference behavior before changing flow.
+Compute w3, w5, and w9 rolling-vector workloads in one pass by sharing
+rotations 1..8.
 ```
 
-### `scalar_reference_copy`
+Output:
 
-Separated optimized-code baseline that mirrors `rolling_avg_amount_w*`.
+```text
+result_value = mean(w3 rolling outputs)
+             + mean(w5 rolling outputs)
+             + mean(w9 rolling outputs)
+```
+
+This is a combined workload row, not a per-window row.
+
+### `vector_reference_copy`
+
+Possible later separated optimized-code baseline that mirrors
+`rolling_avg_vector_w*`.
 
 Purpose:
 
 ```text
-Keep Schema B comparable after Schema A is stable.
+Prove the optimized executable matches reference behavior window-by-window if
+the combined shared-rotation result is hard to interpret.
 ```
 
 ### `lower_q_vector`
@@ -205,9 +218,9 @@ Do not optimize by:
 ```text
 1. Run reference Schema A: all_rolling_vector, repeat=3, one thread.
 2. Run reference Schema B: all_rolling, repeat=3, one thread.
-3. Create optimized vector_reference_copy.
+3. Run optimized shared_rotations_w3_w5_w9_vector.
 4. Try lower-Q vector settings.
-5. Try shared_rotations_multi_window for w3/w5/w9 together.
+5. If needed, create vector_reference_copy for window-by-window comparison.
 6. Only after Schema A is stable, optimize scalar Schema B.
 ```
 

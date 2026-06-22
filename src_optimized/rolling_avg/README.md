@@ -14,8 +14,11 @@ src/main.cpp
 ```
 
 Do not move or rewrite the reference path when testing optimizations. Optimized
-rolling-average code should live here and build as a separate executable later,
-following the same separation pattern as `src_optimized/sum_amount/`.
+rolling-average code lives here and builds as:
+
+```text
+rolling_avg_opt_bench
+```
 
 ## Reference Variants
 
@@ -26,3 +29,18 @@ following the same separation pattern as `src_optimized/sum_amount/`.
 
 Optimization should start with Schema A because it isolates the rolling-window
 math from the scalar reduction path.
+
+## Current Optimized Variant
+
+| Variant | Meaning |
+| --- | --- |
+| `rolling_avg_shared_w3_w5_w9_vector` | Computes `w3`, `w5`, and `w9` Schema A rolling vectors in one pass by sharing rotations `1..8`. |
+
+The result scalar is:
+
+```text
+mean(w3 rolling outputs) + mean(w5 rolling outputs) + mean(w9 rolling outputs)
+```
+
+This keeps one timing row for one combined workload instead of copying the same
+shared runtime into three misleading separate rows.
