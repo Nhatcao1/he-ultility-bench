@@ -348,7 +348,9 @@ BenchmarkResult summarize_results(
           << ";min_eval_ms=" << min_eval
           << ";max_eval_ms=" << max_eval
           << ";min_total_ms=" << min_total
-          << ";max_total_ms=" << max_total;
+          << ";max_total_ms=" << max_total
+          << ";real_calculation_ms=he_eval_time_ms"
+          << ";overall_lifecycle_ms=total_he_time_ms;setup_keygen_excluded_from_total";
     summary.notes = notes.str();
     return summary;
 }

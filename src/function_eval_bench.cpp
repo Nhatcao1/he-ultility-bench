@@ -47,6 +47,7 @@ struct CliArgs {
     std::vector<std::size_t> thread_counts = {1, 4, 8};
     BackendMode backend = BackendMode::PlainCpp;
     std::filesystem::path results_path = "results/function_eval_trig_tiny.csv";
+    std::size_t repeat_count = 1;
     double lower_bound = -0.75;
     double upper_bound = 0.75;
     std::size_t ckks_ring_dim = 0;
@@ -98,7 +99,8 @@ void print_usage(const char* program) {
     std::cerr
         << "Usage: " << program << " [--bench sin_tiny|cos_tiny|tan_tiny|all_trig_tiny] "
         << "[--degrees 15 30 45] [--backend plain_cpp|openfhe_ckks|all] "
-        << "[--threads 1 4 8] [--lower-bound -0.75] [--upper-bound 0.75] "
+        << "[--threads 1 4 8] [--repeat 3] "
+        << "[--lower-bound -0.75] [--upper-bound 0.75] "
         << "[--ckks-ring-dim 0] [--ckks-batch-size 0] [--ckks-depth 0] "
         << "[--ckks-scale-bits 50] [--ckks-first-mod-bits 60] "
         << "[--results results/function_eval_trig_tiny.csv]\n";
@@ -184,6 +186,11 @@ CliArgs parse_args(int argc, char** argv) {
             }
             if (args.thread_counts.empty()) {
                 throw std::runtime_error("--threads requires at least one value");
+            }
+        } else if (flag == "--repeat") {
+            args.repeat_count = parse_size_arg(i, argc, argv, flag);
+            if (args.repeat_count == 0) {
+                throw std::runtime_error("--repeat must be positive");
             }
         } else if (flag == "--results") {
             if (i + 1 >= argc) {
@@ -329,6 +336,53 @@ FunctionEvalResult run_plain_function(
     result.result_values = result.baseline_values;
     result.notes = "tiny_fixed_vector;plain_std_math";
     return result;
+}
+
+std::string repeat_note(std::size_t repeat_index, std::size_t repeat_count) {
+    return "repeat_index=" + std::to_string(repeat_index) +
+           ";repeat_count=" + std::to_string(repeat_count);
+}
+
+double average_field(
+    const std::vector<FunctionEvalResult>& results,
+    double FunctionEvalResult::*field) {
+    double sum = 0.0;
+    for (const auto& result : results) {
+        sum += result.*field;
+    }
+    return divide_or_zero(sum, static_cast<double>(results.size()));
+}
+
+FunctionEvalResult summarize_function_results(
+    const std::vector<FunctionEvalResult>& results,
+    const std::string& backend) {
+    if (results.empty()) {
+        throw std::runtime_error("cannot summarize empty function-eval result list");
+    }
+
+    FunctionEvalResult summary = results.front();
+    summary.operation = results.front().operation + "_summary_avg";
+    summary.backend = backend + "_summary";
+    summary.plain_time_ms = average_field(results, &FunctionEvalResult::plain_time_ms);
+    summary.setup_time_ms = average_field(results, &FunctionEvalResult::setup_time_ms);
+    summary.encode_time_ms = average_field(results, &FunctionEvalResult::encode_time_ms);
+    summary.encrypt_time_ms = average_field(results, &FunctionEvalResult::encrypt_time_ms);
+    summary.he_eval_time_ms = average_field(results, &FunctionEvalResult::he_eval_time_ms);
+    summary.decrypt_time_ms = average_field(results, &FunctionEvalResult::decrypt_time_ms);
+    summary.decode_time_ms = average_field(results, &FunctionEvalResult::decode_time_ms);
+    summary.total_he_time_ms = average_field(results, &FunctionEvalResult::total_he_time_ms);
+    summary.operation_slowdown =
+        average_field(results, &FunctionEvalResult::operation_slowdown);
+    summary.end_to_end_slowdown =
+        average_field(results, &FunctionEvalResult::end_to_end_slowdown);
+    summary.mean_absolute_error =
+        average_field(results, &FunctionEvalResult::mean_absolute_error);
+    summary.max_absolute_error =
+        average_field(results, &FunctionEvalResult::max_absolute_error);
+    summary.notes = "repeat_summary;repeat_count=" + std::to_string(results.size()) +
+        ";real_calculation_ms=he_eval_time_ms" +
+        ";overall_lifecycle_ms=total_he_time_ms;setup_keygen_excluded_from_total";
+    return summary;
 }
 
 void append_result_csv(const std::filesystem::path& path, const FunctionEvalResult& result) {
@@ -552,26 +606,66 @@ int run(const CliArgs& args) {
 
     for (const FunctionSpec& spec : functions) {
         for (const std::size_t degree : args.degrees) {
-            const FunctionEvalResult baseline = run_plain_function(spec, degree, args);
+            std::vector<FunctionEvalResult> plain_results;
+            plain_results.reserve(args.repeat_count);
+            for (std::size_t repeat_index = 1;
+                 repeat_index <= args.repeat_count;
+                 ++repeat_index) {
+                auto plain = run_plain_function(spec, degree, args);
+                plain.notes += ";" + repeat_note(repeat_index, args.repeat_count);
+                plain_results.push_back(plain);
+            }
+            const FunctionEvalResult baseline =
+                summarize_function_results(plain_results, "plain_cpp");
             if (wants_plain(args.backend)) {
+                for (const auto& plain : plain_results) {
+                    append_result_csv(args.results_path, plain);
+                    std::cout << "Ran plain_cpp:" << spec.operation
+                              << " degree=" << degree
+                              << " in " << plain.plain_time_ms << " ms\n";
+                }
                 append_result_csv(args.results_path, baseline);
-                std::cout << "Ran plain_cpp:" << spec.operation
+                std::cout << "Summary " << baseline.backend << ':'
+                          << baseline.operation
                           << " degree=" << degree
-                          << " in " << baseline.plain_time_ms << " ms\n";
+                          << " repeats=" << args.repeat_count
+                          << " avg_plain=" << baseline.plain_time_ms << " ms\n";
             }
 
             if (wants_openfhe(args.backend)) {
 #ifdef UTILITY_BENCH_WITH_OPENFHE
                 for (const std::size_t thread_count : args.thread_counts) {
-                    const FunctionEvalResult result =
-                        run_openfhe_function(spec, degree, thread_count, baseline, args);
-                    append_result_csv(args.results_path, result);
-                    std::cout << "Ran " << result.backend << ':' << result.operation
-                              << " degree=" << result.degree
-                              << " threads=" << result.threads
-                              << " he_total=" << result.total_he_time_ms << " ms"
-                              << " mae=" << result.mean_absolute_error
-                              << " max_error=" << result.max_absolute_error << '\n';
+                    std::vector<FunctionEvalResult> he_results;
+                    he_results.reserve(args.repeat_count);
+                    for (std::size_t repeat_index = 1;
+                         repeat_index <= args.repeat_count;
+                         ++repeat_index) {
+                        auto result =
+                            run_openfhe_function(spec, degree, thread_count, baseline, args);
+                        result.notes += ";" + repeat_note(repeat_index, args.repeat_count);
+                        he_results.push_back(result);
+                        append_result_csv(args.results_path, he_results.back());
+                        std::cout << "Ran " << result.backend << ':' << result.operation
+                                  << " repeat=" << repeat_index << '/' << args.repeat_count
+                                  << " degree=" << result.degree
+                                  << " threads=" << result.threads
+                                  << " he_total=" << result.total_he_time_ms << " ms"
+                                  << " he_calc=" << result.he_eval_time_ms << " ms"
+                                  << " mae=" << result.mean_absolute_error
+                                  << " max_error=" << result.max_absolute_error << '\n';
+                    }
+                    const FunctionEvalResult he_summary = summarize_function_results(
+                        he_results,
+                        he_results.front().backend);
+                    append_result_csv(args.results_path, he_summary);
+                    std::cout << "Summary " << he_summary.backend << ':'
+                              << he_summary.operation
+                              << " degree=" << he_summary.degree
+                              << " threads=" << he_summary.threads
+                              << " repeats=" << args.repeat_count
+                              << " avg_total=" << he_summary.total_he_time_ms
+                              << " ms avg_calc=" << he_summary.he_eval_time_ms
+                              << " ms avg_mae=" << he_summary.mean_absolute_error << '\n';
                 }
 #else
                 throw std::runtime_error(

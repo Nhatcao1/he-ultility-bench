@@ -42,6 +42,7 @@ struct CliArgs {
     std::filesystem::path results_path = "results/dense_layer_results.csv";
     BackendMode backend = BackendMode::PlainCpp;
     std::vector<std::size_t> thread_counts = {1, 4, 8};
+    std::size_t repeat_count = 1;
     std::size_t max_rows = 0;
     std::size_t ckks_ring_dim = 0;
     std::size_t ckks_batch_size = 0;
@@ -99,6 +100,7 @@ void print_usage(const char* program) {
     std::cerr
         << "Usage: " << program << " [--fixture data/generated_dense/dense4x8_100k] "
         << "[--backend plain_cpp|openfhe_ckks|all] [--threads 1 4 8] "
+        << "[--repeat 3] "
         << "[--max-rows 10000] [--ckks-ring-dim 0] [--ckks-batch-size 0] "
         << "[--ckks-depth 2] [--ckks-scale-bits 50] [--ckks-first-mod-bits 60] "
         << "[--results results/dense_layer_results.csv]\n";
@@ -167,6 +169,11 @@ CliArgs parse_args(int argc, char** argv) {
             }
             if (args.thread_counts.empty()) {
                 throw std::runtime_error("--threads requires at least one value");
+            }
+        } else if (flag == "--repeat") {
+            args.repeat_count = parse_size_arg(i, argc, argv, flag);
+            if (args.repeat_count == 0) {
+                throw std::runtime_error("--repeat must be positive");
             }
         } else if (flag == "--max-rows") {
             args.max_rows = parse_size_arg(i, argc, argv, flag);
@@ -343,6 +350,50 @@ DenseResult run_plain_dense(const DenseFixture& fixture) {
     result.baseline_mean = result.result_mean;
     result.notes = "dense4x8;plain_cpp;X_times_W_plus_b;single_thread_baseline";
     return result;
+}
+
+std::string repeat_note(std::size_t repeat_index, std::size_t repeat_count) {
+    return "repeat_index=" + std::to_string(repeat_index) +
+           ";repeat_count=" + std::to_string(repeat_count);
+}
+
+double average_field(const std::vector<DenseResult>& results, double DenseResult::*field) {
+    double sum = 0.0;
+    for (const auto& result : results) {
+        sum += result.*field;
+    }
+    return divide_or_zero(sum, static_cast<double>(results.size()));
+}
+
+DenseResult summarize_dense_results(
+    const std::vector<DenseResult>& results,
+    const std::string& backend) {
+    if (results.empty()) {
+        throw std::runtime_error("cannot summarize empty dense result list");
+    }
+
+    DenseResult summary = results.front();
+    summary.operation = results.front().operation + "_summary_avg";
+    summary.backend = backend + "_summary";
+    summary.plain_time_ms = average_field(results, &DenseResult::plain_time_ms);
+    summary.setup_time_ms = average_field(results, &DenseResult::setup_time_ms);
+    summary.encode_time_ms = average_field(results, &DenseResult::encode_time_ms);
+    summary.encrypt_time_ms = average_field(results, &DenseResult::encrypt_time_ms);
+    summary.he_eval_time_ms = average_field(results, &DenseResult::he_eval_time_ms);
+    summary.decrypt_time_ms = average_field(results, &DenseResult::decrypt_time_ms);
+    summary.decode_time_ms = average_field(results, &DenseResult::decode_time_ms);
+    summary.total_he_time_ms = average_field(results, &DenseResult::total_he_time_ms);
+    summary.operation_slowdown = average_field(results, &DenseResult::operation_slowdown);
+    summary.end_to_end_slowdown = average_field(results, &DenseResult::end_to_end_slowdown);
+    summary.result_mean = average_field(results, &DenseResult::result_mean);
+    summary.baseline_mean = average_field(results, &DenseResult::baseline_mean);
+    summary.mean_absolute_error = average_field(results, &DenseResult::mean_absolute_error);
+    summary.max_absolute_error = average_field(results, &DenseResult::max_absolute_error);
+    summary.slot_utilization = average_field(results, &DenseResult::slot_utilization);
+    summary.notes = "repeat_summary;repeat_count=" + std::to_string(results.size()) +
+        ";real_calculation_ms=he_eval_time_ms" +
+        ";overall_lifecycle_ms=total_he_time_ms;setup_keygen_excluded_from_total";
+    return summary;
 }
 
 void append_dense_result_csv(const std::filesystem::path& path, const DenseResult& result) {
@@ -600,24 +651,57 @@ int run(const CliArgs& args) {
         std::cout << "Applied --max-rows " << args.max_rows << '\n';
     }
 
-    const DenseResult baseline = run_plain_dense(fixture);
+    std::vector<DenseResult> plain_results;
+    plain_results.reserve(args.repeat_count);
+    for (std::size_t repeat_index = 1; repeat_index <= args.repeat_count; ++repeat_index) {
+        auto plain = run_plain_dense(fixture);
+        plain.notes += ";" + repeat_note(repeat_index, args.repeat_count);
+        plain_results.push_back(plain);
+    }
+    const DenseResult baseline = summarize_dense_results(plain_results, "plain_cpp");
     if (wants_plain(args.backend)) {
+        for (const auto& plain : plain_results) {
+            append_dense_result_csv(args.results_path, plain);
+            std::cout << "Ran plain_cpp:dense4x8_vector"
+                      << " in " << plain.plain_time_ms << " ms"
+                      << " mean=" << plain.result_mean << '\n';
+        }
         append_dense_result_csv(args.results_path, baseline);
-        std::cout << "Ran plain_cpp:dense4x8_vector"
-                  << " in " << baseline.plain_time_ms << " ms"
-                  << " mean=" << baseline.result_mean << '\n';
+        std::cout << "Summary " << baseline.backend << ':' << baseline.operation
+                  << " repeats=" << args.repeat_count
+                  << " avg_plain=" << baseline.plain_time_ms << " ms\n";
     }
 
     if (wants_openfhe(args.backend)) {
 #ifdef UTILITY_BENCH_WITH_OPENFHE
         for (const std::size_t thread_count : args.thread_counts) {
-            const DenseResult result = run_openfhe_dense(fixture, thread_count, baseline, args);
-            append_dense_result_csv(args.results_path, result);
-            std::cout << "Ran " << result.backend << ":dense4x8_vector"
-                      << " threads=" << result.threads
-                      << " he_total=" << result.total_he_time_ms << " ms"
-                      << " mae=" << result.mean_absolute_error
-                      << " max_error=" << result.max_absolute_error << '\n';
+            std::vector<DenseResult> he_results;
+            he_results.reserve(args.repeat_count);
+            for (std::size_t repeat_index = 1;
+                 repeat_index <= args.repeat_count;
+                 ++repeat_index) {
+                auto result = run_openfhe_dense(fixture, thread_count, baseline, args);
+                result.notes += ";" + repeat_note(repeat_index, args.repeat_count);
+                he_results.push_back(result);
+                append_dense_result_csv(args.results_path, he_results.back());
+                std::cout << "Ran " << result.backend << ":dense4x8_vector"
+                          << " repeat=" << repeat_index << '/' << args.repeat_count
+                          << " threads=" << result.threads
+                          << " he_total=" << result.total_he_time_ms << " ms"
+                          << " he_calc=" << result.he_eval_time_ms << " ms"
+                          << " mae=" << result.mean_absolute_error
+                          << " max_error=" << result.max_absolute_error << '\n';
+            }
+            const DenseResult he_summary =
+                summarize_dense_results(he_results, he_results.front().backend);
+            append_dense_result_csv(args.results_path, he_summary);
+            std::cout << "Summary " << he_summary.backend << ':'
+                      << he_summary.operation
+                      << " threads=" << he_summary.threads
+                      << " repeats=" << args.repeat_count
+                      << " avg_total=" << he_summary.total_he_time_ms
+                      << " ms avg_calc=" << he_summary.he_eval_time_ms
+                      << " ms avg_mae=" << he_summary.mean_absolute_error << '\n';
         }
 #else
         throw std::runtime_error(

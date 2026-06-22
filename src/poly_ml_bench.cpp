@@ -47,6 +47,7 @@ struct CliArgs {
     std::vector<std::string> benches = {"poly_score_degree3"};
     std::vector<std::size_t> thread_counts = {1, 4, 8};
     BackendMode backend = BackendMode::PlainCpp;
+    std::size_t repeat_count = 1;
     std::size_t max_rows = 0;
     std::size_t ckks_ring_dim = 0;
     std::size_t ckks_batch_size = 0;
@@ -102,6 +103,7 @@ void print_usage(const char* program) {
         << "[--bench poly_score_degree3|poly_score_degree7|poly_score_degree9|"
         << "poly_score_degree9_bootstrap|all_poly] "
         << "[--backend plain_cpp|openfhe_ckks|all] [--threads 1 4 8] "
+        << "[--repeat 3] "
         << "[--max-rows 1000] [--ckks-ring-dim 0] [--ckks-batch-size 0] "
         << "[--ckks-depth 6] [--ckks-scale-bits 50] [--ckks-first-mod-bits 60] "
         << "[--bootstrap-levels-after 10] [--bootstrap-level-budget 4 4] "
@@ -178,6 +180,11 @@ CliArgs parse_args(int argc, char** argv) {
             }
             if (args.thread_counts.empty()) {
                 throw std::runtime_error("--threads requires at least one value");
+            }
+        } else if (flag == "--repeat") {
+            args.repeat_count = parse_size_arg(i, argc, argv, flag);
+            if (args.repeat_count == 0) {
+                throw std::runtime_error("--repeat must be positive");
             }
         } else if (flag == "--max-rows") {
             args.max_rows = parse_size_arg(i, argc, argv, flag);
@@ -335,6 +342,56 @@ PolyResult run_plain_poly(
     result.baseline_value = value;
     result.notes = "compute_only_no_io;std_single_thread_baseline";
     return result;
+}
+
+std::string repeat_note(std::size_t repeat_index, std::size_t repeat_count) {
+    return "repeat_index=" + std::to_string(repeat_index) +
+           ";repeat_count=" + std::to_string(repeat_count);
+}
+
+double average_field(const std::vector<PolyResult>& results, double PolyResult::*field) {
+    double sum = 0.0;
+    for (const auto& result : results) {
+        sum += result.*field;
+    }
+    return divide_or_zero(sum, static_cast<double>(results.size()));
+}
+
+PolyResult summarize_poly_results(
+    const std::vector<PolyResult>& results,
+    const std::string& operation,
+    const std::string& backend) {
+    if (results.empty()) {
+        throw std::runtime_error("cannot summarize empty polynomial result list");
+    }
+
+    PolyResult summary = results.front();
+    summary.operation = operation + "_summary_avg";
+    summary.backend = backend + "_summary";
+    summary.plain_time_ms = average_field(results, &PolyResult::plain_time_ms);
+    summary.setup_time_ms = average_field(results, &PolyResult::setup_time_ms);
+    summary.bootstrap_setup_time_ms =
+        average_field(results, &PolyResult::bootstrap_setup_time_ms);
+    summary.bootstrap_keygen_time_ms =
+        average_field(results, &PolyResult::bootstrap_keygen_time_ms);
+    summary.encode_time_ms = average_field(results, &PolyResult::encode_time_ms);
+    summary.encrypt_time_ms = average_field(results, &PolyResult::encrypt_time_ms);
+    summary.he_eval_time_ms = average_field(results, &PolyResult::he_eval_time_ms);
+    summary.bootstrap_time_ms = average_field(results, &PolyResult::bootstrap_time_ms);
+    summary.decrypt_time_ms = average_field(results, &PolyResult::decrypt_time_ms);
+    summary.decode_time_ms = average_field(results, &PolyResult::decode_time_ms);
+    summary.total_he_time_ms = average_field(results, &PolyResult::total_he_time_ms);
+    summary.operation_slowdown = average_field(results, &PolyResult::operation_slowdown);
+    summary.end_to_end_slowdown = average_field(results, &PolyResult::end_to_end_slowdown);
+    summary.result_value = average_field(results, &PolyResult::result_value);
+    summary.baseline_value = average_field(results, &PolyResult::baseline_value);
+    summary.absolute_error = average_field(results, &PolyResult::absolute_error);
+    summary.relative_error = average_field(results, &PolyResult::relative_error);
+    summary.slot_utilization = average_field(results, &PolyResult::slot_utilization);
+    summary.notes = "repeat_summary;repeat_count=" + std::to_string(results.size()) +
+        ";real_calculation_ms=he_eval_time_ms_plus_bootstrap_time_ms" +
+        ";overall_lifecycle_ms=total_he_time_ms;setup_keygen_excluded_from_total";
+    return summary;
 }
 
 bool file_exists_and_has_content(const std::filesystem::path& path) {
@@ -680,26 +737,62 @@ int run(const CliArgs& args) {
     const std::vector<BenchSpec> benches = expand_benches(args.benches);
 
     for (const BenchSpec& spec : benches) {
-        const PolyResult baseline = run_plain_poly(data, spec, 1);
+        std::vector<PolyResult> plain_results;
+        plain_results.reserve(args.repeat_count);
+        for (std::size_t repeat_index = 1; repeat_index <= args.repeat_count; ++repeat_index) {
+            auto plain = run_plain_poly(data, spec, 1);
+            plain.notes += ";" + repeat_note(repeat_index, args.repeat_count);
+            plain_results.push_back(plain);
+        }
+        const PolyResult baseline =
+            summarize_poly_results(plain_results, spec.name, "plain_cpp");
         if (wants_plain(args.backend)) {
+            for (const auto& plain : plain_results) {
+                append_poly_result_csv(args.results_path, plain);
+                std::cout << "Ran " << plain.backend << ':' << plain.operation
+                          << " threads=" << plain.threads
+                          << " in " << plain.plain_time_ms << " ms"
+                          << " value=" << plain.result_value << '\n';
+            }
             append_poly_result_csv(args.results_path, baseline);
-            std::cout << "Ran " << baseline.backend << ':' << baseline.operation
-                      << " threads=" << baseline.threads
-                      << " in " << baseline.plain_time_ms << " ms"
-                      << " value=" << baseline.result_value << '\n';
+            std::cout << "Summary " << baseline.backend << ':' << baseline.operation
+                      << " repeats=" << args.repeat_count
+                      << " avg_plain=" << baseline.plain_time_ms << " ms\n";
         }
 
         if (wants_openfhe(args.backend)) {
 #ifdef UTILITY_BENCH_WITH_OPENFHE
             for (const std::size_t thread_count : args.thread_counts) {
-                const PolyResult result = run_openfhe_poly(data, spec, thread_count, baseline, args);
-                append_poly_result_csv(args.results_path, result);
-                std::cout << "Ran " << result.backend << ':' << result.operation
-                          << " threads=" << result.threads
-                          << " he_total=" << result.total_he_time_ms << " ms"
-                          << " bootstrap=" << result.bootstrap_time_ms << " ms"
-                          << " abs_error=" << result.absolute_error
-                          << " rel_error=" << result.relative_error << '\n';
+                std::vector<PolyResult> he_results;
+                he_results.reserve(args.repeat_count);
+                for (std::size_t repeat_index = 1;
+                     repeat_index <= args.repeat_count;
+                     ++repeat_index) {
+                    auto result = run_openfhe_poly(data, spec, thread_count, baseline, args);
+                    result.notes += ";" + repeat_note(repeat_index, args.repeat_count);
+                    he_results.push_back(result);
+                    append_poly_result_csv(args.results_path, he_results.back());
+                    std::cout << "Ran " << result.backend << ':' << result.operation
+                              << " repeat=" << repeat_index << '/' << args.repeat_count
+                              << " threads=" << result.threads
+                              << " he_total=" << result.total_he_time_ms << " ms"
+                              << " he_calc=" << (result.he_eval_time_ms + result.bootstrap_time_ms)
+                              << " ms abs_error=" << result.absolute_error
+                              << " rel_error=" << result.relative_error << '\n';
+                }
+                const PolyResult he_summary = summarize_poly_results(
+                    he_results,
+                    he_results.front().operation,
+                    he_results.front().backend);
+                append_poly_result_csv(args.results_path, he_summary);
+                std::cout << "Summary " << he_summary.backend << ':'
+                          << he_summary.operation
+                          << " threads=" << he_summary.threads
+                          << " repeats=" << args.repeat_count
+                          << " avg_total=" << he_summary.total_he_time_ms
+                          << " ms avg_calc="
+                          << (he_summary.he_eval_time_ms + he_summary.bootstrap_time_ms)
+                          << " ms avg_rel_error=" << he_summary.relative_error << '\n';
             }
 #else
             throw std::runtime_error(

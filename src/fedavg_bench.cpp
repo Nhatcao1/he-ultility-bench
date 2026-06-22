@@ -41,6 +41,7 @@ struct CliArgs {
     std::size_t ckks_scaling_mod_size = 50;
     std::size_t ckks_first_mod_size = 60;
     std::vector<std::size_t> threads = {1};
+    std::size_t repeat_count = 1;
 };
 
 struct FedAvgResult {
@@ -51,6 +52,7 @@ struct FedAvgResult {
     std::size_t chunks = 0;
     std::size_t slots = 0;
     std::size_t threads = 1;
+    double setup_time_ms = 0.0;
     double flatten_time_ms = 0.0;
     double plain_aggregate_time_ms = 0.0;
     double encode_time_ms = 0.0;
@@ -78,6 +80,7 @@ void print_usage(const char* program) {
     std::cerr
         << "Usage: " << program << " [--fixture data/generated_fedavg/mini_mlp_75_c4] "
         << "[--backend plain|openfhe_ckks|all] [--threads 1 4 8] "
+        << "[--repeat 3] "
         << "[--ckks-ring-dim 0] [--ckks-batch-size 0] "
         << "[--ckks-depth 1] [--ckks-scale-bits 50] [--ckks-first-mod-bits 60] "
         << "[--results results/fedavg_results.csv]\n";
@@ -109,6 +112,8 @@ CliArgs parse_args(int argc, char** argv) {
             if (args.threads.empty()) {
                 throw std::runtime_error("--threads requires at least one value");
             }
+        } else if (flag == "--repeat") {
+            args.repeat_count = static_cast<std::size_t>(std::stoull(need_value(flag)));
         } else if (flag == "--ckks-ring-dim") {
             args.ckks_ring_dim = static_cast<std::size_t>(std::stoull(need_value(flag)));
         } else if (flag == "--ckks-batch-size") {
@@ -132,6 +137,9 @@ CliArgs parse_args(int argc, char** argv) {
             return threads == 0;
         })) {
         throw std::runtime_error("--threads values must be positive");
+    }
+    if (args.repeat_count == 0) {
+        throw std::runtime_error("--repeat must be positive");
     }
     return args;
 }
@@ -174,7 +182,8 @@ void append_result_csv(const std::filesystem::path& path, const FedAvgResult& re
     if (write_header) {
         output
             << "fixture,backend,clients,parameters,chunks,slots,threads,"
-            << "flatten_time_ms,plain_aggregate_time_ms,encode_time_ms,encrypt_time_ms,"
+            << "setup_time_ms,flatten_time_ms,plain_aggregate_time_ms,"
+            << "encode_time_ms,encrypt_time_ms,"
             << "serialize_time_ms,deserialize_time_ms,he_merge_time_ms,decrypt_time_ms,"
             << "decode_time_ms,unflatten_time_ms,total_he_time_ms,"
             << "mae_vs_expected,max_abs_error_vs_expected,plain_payload_bytes,"
@@ -189,6 +198,7 @@ void append_result_csv(const std::filesystem::path& path, const FedAvgResult& re
            << result.chunks << ','
            << result.slots << ','
            << result.threads << ','
+           << result.setup_time_ms << ','
            << result.flatten_time_ms << ','
            << result.plain_aggregate_time_ms << ','
            << result.encode_time_ms << ','
@@ -249,6 +259,50 @@ FedAvgResult run_plain_fedavg(
     return result;
 }
 
+std::string repeat_note(std::size_t repeat_index, std::size_t repeat_count) {
+    return "repeat_index=" + std::to_string(repeat_index) +
+           ";repeat_count=" + std::to_string(repeat_count);
+}
+
+double average_field(const std::vector<FedAvgResult>& results, double FedAvgResult::*field) {
+    double sum = 0.0;
+    for (const auto& result : results) {
+        sum += result.*field;
+    }
+    return divide_or_zero(sum, static_cast<double>(results.size()));
+}
+
+FedAvgResult summarize_fedavg_results(
+    const std::vector<FedAvgResult>& results,
+    const std::string& backend) {
+    if (results.empty()) {
+        throw std::runtime_error("cannot summarize empty FedAvg result list");
+    }
+
+    FedAvgResult summary = results.front();
+    summary.backend = backend + "_summary_avg";
+    summary.setup_time_ms = average_field(results, &FedAvgResult::setup_time_ms);
+    summary.flatten_time_ms = average_field(results, &FedAvgResult::flatten_time_ms);
+    summary.plain_aggregate_time_ms =
+        average_field(results, &FedAvgResult::plain_aggregate_time_ms);
+    summary.encode_time_ms = average_field(results, &FedAvgResult::encode_time_ms);
+    summary.encrypt_time_ms = average_field(results, &FedAvgResult::encrypt_time_ms);
+    summary.serialize_time_ms = average_field(results, &FedAvgResult::serialize_time_ms);
+    summary.deserialize_time_ms = average_field(results, &FedAvgResult::deserialize_time_ms);
+    summary.he_merge_time_ms = average_field(results, &FedAvgResult::he_merge_time_ms);
+    summary.decrypt_time_ms = average_field(results, &FedAvgResult::decrypt_time_ms);
+    summary.decode_time_ms = average_field(results, &FedAvgResult::decode_time_ms);
+    summary.unflatten_time_ms = average_field(results, &FedAvgResult::unflatten_time_ms);
+    summary.total_he_time_ms = average_field(results, &FedAvgResult::total_he_time_ms);
+    summary.mae_vs_expected = average_field(results, &FedAvgResult::mae_vs_expected);
+    summary.max_abs_error_vs_expected =
+        average_field(results, &FedAvgResult::max_abs_error_vs_expected);
+    summary.notes = "repeat_summary;repeat_count=" + std::to_string(results.size()) +
+        ";real_calculation_ms=he_merge_time_ms" +
+        ";overall_lifecycle_ms=total_he_time_ms;setup_keygen_excluded_from_total";
+    return summary;
+}
+
 #ifdef UTILITY_BENCH_WITH_OPENFHE
 std::size_t configure_threads(std::size_t requested_threads) {
 #ifdef _OPENMP
@@ -302,6 +356,7 @@ FedAvgResult run_openfhe_fedavg(
     result.scaling_mod_size = args.ckks_scaling_mod_size;
     result.first_mod_size = args.ckks_first_mod_size;
 
+    const Timer setup_timer;
     CCParams<CryptoContextCKKSRNS> parameters;
     parameters.SetMultiplicativeDepth(static_cast<uint32_t>(args.ckks_depth));
     parameters.SetScalingModSize(static_cast<uint32_t>(args.ckks_scaling_mod_size));
@@ -321,6 +376,7 @@ FedAvgResult run_openfhe_fedavg(
     cc->Enable(ADVANCEDSHE);
 
     const auto keys = cc->KeyGen();
+    result.setup_time_ms = setup_timer.elapsed_ms();
     result.actual_ring_dimension = cc->GetRingDimension();
     result.slots = args.ckks_batch_size == 0
         ? result.actual_ring_dimension / 2
@@ -424,30 +480,66 @@ int main(int argc, char** argv) {
         const std::string fixture_name = args.fixture_dir.filename().string();
 
         if (args.backend == "plain" || args.backend == "all") {
-            const auto plain = run_plain_fedavg(fixture, fixture_name);
-            append_result_csv(args.results_path, plain);
-            std::cout << "Ran " << plain.backend
-                      << " fixture=" << plain.fixture
-                      << " params=" << plain.parameters
-                      << " mae=" << plain.mae_vs_expected
-                      << " max_abs=" << plain.max_abs_error_vs_expected << '\n';
+            std::vector<FedAvgResult> plain_results;
+            plain_results.reserve(args.repeat_count);
+            for (std::size_t repeat_index = 1;
+                 repeat_index <= args.repeat_count;
+                 ++repeat_index) {
+                auto plain = run_plain_fedavg(fixture, fixture_name);
+                plain.notes += ";" + repeat_note(repeat_index, args.repeat_count);
+                plain_results.push_back(plain);
+                append_result_csv(args.results_path, plain_results.back());
+                std::cout << "Ran " << plain.backend
+                          << " repeat=" << repeat_index << '/' << args.repeat_count
+                          << " fixture=" << plain.fixture
+                          << " params=" << plain.parameters
+                          << " plain_calc=" << plain.plain_aggregate_time_ms
+                          << " ms mae=" << plain.mae_vs_expected
+                          << " max_abs=" << plain.max_abs_error_vs_expected << '\n';
+            }
+            const auto plain_summary =
+                summarize_fedavg_results(plain_results, "plain_flat_json");
+            append_result_csv(args.results_path, plain_summary);
+            std::cout << "Summary " << plain_summary.backend
+                      << " repeats=" << args.repeat_count
+                      << " avg_plain_calc=" << plain_summary.plain_aggregate_time_ms
+                      << " ms\n";
         }
 
         if (args.backend == "openfhe_ckks" || args.backend == "all") {
 #ifdef UTILITY_BENCH_WITH_OPENFHE
             for (const std::size_t requested_threads : args.threads) {
-                CliArgs thread_args = args;
-                thread_args.threads = {requested_threads};
-                const auto he = run_openfhe_fedavg(fixture, fixture_name, thread_args);
-                append_result_csv(args.results_path, he);
-                std::cout << "Ran " << he.backend
-                          << " fixture=" << he.fixture
-                          << " params=" << he.parameters
-                          << " chunks=" << he.chunks
-                          << " threads=" << he.threads
-                          << " he_total=" << he.total_he_time_ms
-                          << " mae=" << he.mae_vs_expected
-                          << " max_abs=" << he.max_abs_error_vs_expected << '\n';
+                std::vector<FedAvgResult> he_results;
+                he_results.reserve(args.repeat_count);
+                for (std::size_t repeat_index = 1;
+                     repeat_index <= args.repeat_count;
+                     ++repeat_index) {
+                    CliArgs thread_args = args;
+                    thread_args.threads = {requested_threads};
+                    auto he = run_openfhe_fedavg(fixture, fixture_name, thread_args);
+                    he.notes += ";" + repeat_note(repeat_index, args.repeat_count);
+                    he_results.push_back(he);
+                    append_result_csv(args.results_path, he_results.back());
+                    std::cout << "Ran " << he.backend
+                              << " repeat=" << repeat_index << '/' << args.repeat_count
+                              << " fixture=" << he.fixture
+                              << " params=" << he.parameters
+                              << " chunks=" << he.chunks
+                              << " threads=" << he.threads
+                              << " he_total=" << he.total_he_time_ms
+                              << " he_calc=" << he.he_merge_time_ms
+                              << " mae=" << he.mae_vs_expected
+                              << " max_abs=" << he.max_abs_error_vs_expected << '\n';
+                }
+                const auto he_summary =
+                    summarize_fedavg_results(he_results, he_results.front().backend);
+                append_result_csv(args.results_path, he_summary);
+                std::cout << "Summary " << he_summary.backend
+                          << " threads=" << he_summary.threads
+                          << " repeats=" << args.repeat_count
+                          << " avg_total=" << he_summary.total_he_time_ms
+                          << " ms avg_calc=" << he_summary.he_merge_time_ms
+                          << " ms avg_mae=" << he_summary.mae_vs_expected << '\n';
             }
 #else
             throw std::runtime_error(
