@@ -489,8 +489,8 @@ SELECT amount FROM transactions WHERE amount > 5000;
 
 CSV loading time is printed separately and is not included in the compute timing.
 For weighted aggregation, customer lookup expansion is also printed separately
-and excluded from compute timing. The first CKKS weighted version encrypts
-`amount` and keeps `risk_weight` as a packed plaintext multiplier.
+and excluded from compute timing. The CKKS weighted version encrypts both
+`amount` and `risk_weight` before multiplying them.
 Output file writing is also excluded from compute timing.
 Plain C++ is always measured once as a single-thread baseline. OpenFHE CKKS is
 run once per requested thread count and compared back to that same single-thread

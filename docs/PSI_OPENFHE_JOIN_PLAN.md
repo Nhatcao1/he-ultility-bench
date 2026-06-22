@@ -68,7 +68,7 @@ customer_id, amount                           customer_id, risk_weight
               OpenFHE CKKS numeric compute
                          |
                          v
-          Enc(amount) * Enc/Plain(risk_weight)
+          Enc(amount) * Enc(risk_weight)
                          |
                          v
                     EvalSum
@@ -147,13 +147,6 @@ Run CKKS:
 
 ```text
 Enc(amount) * Enc(risk_weight)
-EvalSum
-```
-
-or if lookup values are public:
-
-```text
-Enc(amount) * Plain(risk_weight)
 EvalSum
 ```
 
