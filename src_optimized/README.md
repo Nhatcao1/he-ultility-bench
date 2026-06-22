@@ -12,10 +12,10 @@ src_optimized/
   sum_amount/
   weighted_sum/
   rolling_avg/
-  poly_ml/
+  poly_score/
   dense_layer/
   trig/
 ```
 
-The first target should be `sum_amount` because it is the smallest useful HE
-aggregation benchmark.
+Each optimized target should build as a separate binary so the reference
+benchmarks remain reproducible.

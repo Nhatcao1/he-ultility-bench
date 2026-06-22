@@ -29,6 +29,7 @@ before we care about speed.
 | --- | --- | --- |
 | `sum_amount` | Planned | First target because it is the simplest aggregation and shows packing/rotation behavior clearly. |
 | `rolling_avg` | Planning | Rotation-heavy benchmark; optimize Schema A vector path before scalar reduction. |
+| `poly_score` | Planning | Degree-9 CKKS polynomial with bootstrap; compare original, power-tree, and block evaluation. |
 
 ## Result Layout
 
@@ -39,6 +40,7 @@ results/original/
 results/optimized/
 results/optimized_add/
 results/optimized_rolling/
+results/optimized_poly/
 results/comparisons/
 ```
 
