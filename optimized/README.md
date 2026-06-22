@@ -28,6 +28,7 @@ before we care about speed.
 | Track | Status | Notes |
 | --- | --- | --- |
 | `sum_amount` | Planned | First target because it is the simplest aggregation and shows packing/rotation behavior clearly. |
+| `weighted_sum` | Planning | All-encrypted `SUM(amount * risk_weight)`; compare per-chunk EvalSum with add-then-sum. |
 | `rolling_avg` | Planning | Rotation-heavy benchmark; optimize Schema A vector path before scalar reduction. |
 | `poly_score` | Planning | Degree-9 CKKS polynomial with bootstrap; compare original, power-tree, and block evaluation. |
 
@@ -39,6 +40,7 @@ Use these result folders when running on the server:
 results/original/
 results/optimized/
 results/optimized_add/
+results/optimized_weighted/
 results/optimized_rolling/
 results/optimized_poly/
 results/comparisons/
