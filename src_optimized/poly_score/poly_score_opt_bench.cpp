@@ -455,6 +455,7 @@ CiphertextT eval_power_tree_degree9(
     PlaintextT constant_half) {
     const double c1 = coefficient_for_odd_power(1);
     const double c3 = coefficient_for_odd_power(3);
+    const double c5 = coefficient_for_odd_power(5);
     const double c7 = coefficient_for_odd_power(7);
     const double c9 = coefficient_for_odd_power(9);
 
@@ -483,7 +484,6 @@ CiphertextT eval_block_degree9(
     PlaintextT constant_c5) {
     const double c1 = coefficient_for_odd_power(1);
     const double c3 = coefficient_for_odd_power(3);
-    const double c5 = coefficient_for_odd_power(5);
     const double c7 = coefficient_for_odd_power(7);
     const double c9 = coefficient_for_odd_power(9);
 
