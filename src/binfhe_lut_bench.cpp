@@ -295,10 +295,19 @@ BenchmarkResult run_binfhe_product_lut(
 
     const Timer setup_timer;
     auto cc = BinFHEContext();
+    std::cout << "BinFHE setup: GenerateBinFHEContext"
+              << " ring_dim=" << ring_dim
+              << " logq=" << logq << std::endl;
     cc.GenerateBinFHEContext(STD128, true, logq, ring_dim, GINX, false);
+
+    std::cout << "BinFHE setup: KeyGen" << std::endl;
     auto secret_key = cc.KeyGen();
+
+    std::cout << "BinFHE setup: BTKeyGen" << std::endl;
     cc.BTKeyGen(secret_key);
+
     const std::uint64_t plaintext_modulus = cc.GetMaxPlaintextSpace().ConvertToInt();
+    std::cout << "BinFHE setup: plaintext_modulus=" << plaintext_modulus << std::endl;
     const std::uint64_t max_input = kProductDomain - 1;
     const std::uint64_t max_output =
         *std::max_element(kProductRiskCode.begin(), kProductRiskCode.end());
@@ -311,6 +320,8 @@ BenchmarkResult run_binfhe_product_lut(
             ", required>=" + std::to_string(required_plaintext_modulus) +
             ". Increase --binfhe-ring-dim, e.g. --binfhe-ring-dim 8192");
     }
+
+    std::cout << "BinFHE setup: GenerateLUTviaFunction" << std::endl;
     auto lut = cc.GenerateLUTviaFunction(
         product_risk_lut_function,
         lbcrypto::NativeInteger(plaintext_modulus));
