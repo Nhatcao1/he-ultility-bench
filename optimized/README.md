@@ -31,6 +31,7 @@ before we care about speed.
 | `weighted_sum` | Planning | All-encrypted `SUM(amount * risk_weight)`; compare per-chunk EvalSum with add-then-sum. |
 | `rolling_avg` | Planning | Rotation-heavy benchmark; optimize Schema A vector path before scalar reduction. |
 | `poly_score` | Planning | Degree-9 CKKS polynomial with bootstrap; compare original, power-tree, and block evaluation. |
+| `lookup` | Planned | Encrypted one-hot channel lookup; lookup-only, no weighted sum or final aggregate. |
 
 ## Result Layout
 
@@ -43,6 +44,7 @@ results/optimized_add/
 results/optimized_weighted/
 results/optimized_rolling/
 results/optimized_poly/
+results/optimized_lookup/
 results/comparisons/
 ```
 
