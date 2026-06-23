@@ -52,10 +52,6 @@ add_executable(weighted_sum_opt_bench
     src_optimized/weighted_sum/weighted_sum_opt_bench.cpp
 )
 
-add_executable(lookup_opt_bench
-    src_optimized/lookup/lookup_opt_bench.cpp
-)
-
 target_compile_options(utility_bench PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>
 )
@@ -100,10 +96,6 @@ target_compile_options(weighted_sum_opt_bench PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>
 )
 
-target_compile_options(lookup_opt_bench PRIVATE
-    $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>
-)
-
 target_include_directories(sum_amount_opt_bench PRIVATE
     src
 )
@@ -117,10 +109,6 @@ target_include_directories(poly_score_opt_bench PRIVATE
 )
 
 target_include_directories(weighted_sum_opt_bench PRIVATE
-    src
-)
-
-target_include_directories(lookup_opt_bench PRIVATE
     src
 )
 
@@ -141,7 +129,6 @@ if(UTILITY_BENCH_WITH_OPENFHE)
     target_compile_definitions(rolling_avg_opt_bench PRIVATE UTILITY_BENCH_WITH_OPENFHE=1)
     target_compile_definitions(poly_score_opt_bench PRIVATE UTILITY_BENCH_WITH_OPENFHE=1)
     target_compile_definitions(weighted_sum_opt_bench PRIVATE UTILITY_BENCH_WITH_OPENFHE=1)
-    target_compile_definitions(lookup_opt_bench PRIVATE UTILITY_BENCH_WITH_OPENFHE=1)
 
     target_compile_options(utility_bench PRIVATE ${OPENFHE_CXX_FLAGS_LIST})
     target_compile_options(fedavg_bench PRIVATE ${OPENFHE_CXX_FLAGS_LIST})
@@ -154,7 +141,6 @@ if(UTILITY_BENCH_WITH_OPENFHE)
     target_compile_options(rolling_avg_opt_bench PRIVATE ${OPENFHE_CXX_FLAGS_LIST})
     target_compile_options(poly_score_opt_bench PRIVATE ${OPENFHE_CXX_FLAGS_LIST})
     target_compile_options(weighted_sum_opt_bench PRIVATE ${OPENFHE_CXX_FLAGS_LIST})
-    target_compile_options(lookup_opt_bench PRIVATE ${OPENFHE_CXX_FLAGS_LIST})
     # OpenFHE headers intentionally use compiler extensions such as __int128.
     # Mark them as SYSTEM so our local warning policy does not turn third-party
     # header warnings into build failures.
@@ -246,14 +232,6 @@ if(UTILITY_BENCH_WITH_OPENFHE)
         ${OpenFHE_INCLUDE}/pke
         ${OpenFHE_INCLUDE}/binfhe
     )
-    target_include_directories(lookup_opt_bench SYSTEM PRIVATE
-        ${OPENMP_INCLUDES}
-        ${OpenFHE_INCLUDE}
-        ${OpenFHE_INCLUDE}/third-party/include
-        ${OpenFHE_INCLUDE}/core
-        ${OpenFHE_INCLUDE}/pke
-        ${OpenFHE_INCLUDE}/binfhe
-    )
     target_link_directories(utility_bench PRIVATE
         ${OpenFHE_LIBDIR}
         ${OPENMP_LIBRARIES}
@@ -298,10 +276,6 @@ if(UTILITY_BENCH_WITH_OPENFHE)
         ${OpenFHE_LIBDIR}
         ${OPENMP_LIBRARIES}
     )
-    target_link_directories(lookup_opt_bench PRIVATE
-        ${OpenFHE_LIBDIR}
-        ${OPENMP_LIBRARIES}
-    )
 
     if(UNIX AND NOT APPLE)
         target_link_options(utility_bench PRIVATE -Wl,--no-as-needed)
@@ -315,7 +289,6 @@ if(UTILITY_BENCH_WITH_OPENFHE)
         target_link_options(rolling_avg_opt_bench PRIVATE -Wl,--no-as-needed)
         target_link_options(poly_score_opt_bench PRIVATE -Wl,--no-as-needed)
         target_link_options(weighted_sum_opt_bench PRIVATE -Wl,--no-as-needed)
-        target_link_options(lookup_opt_bench PRIVATE -Wl,--no-as-needed)
     endif()
 
     target_link_options(utility_bench PRIVATE ${OPENFHE_EXE_LINKER_FLAGS_LIST})
@@ -329,7 +302,6 @@ if(UTILITY_BENCH_WITH_OPENFHE)
     target_link_options(rolling_avg_opt_bench PRIVATE ${OPENFHE_EXE_LINKER_FLAGS_LIST})
     target_link_options(poly_score_opt_bench PRIVATE ${OPENFHE_EXE_LINKER_FLAGS_LIST})
     target_link_options(weighted_sum_opt_bench PRIVATE ${OPENFHE_EXE_LINKER_FLAGS_LIST})
-    target_link_options(lookup_opt_bench PRIVATE ${OPENFHE_EXE_LINKER_FLAGS_LIST})
     target_link_libraries(utility_bench PRIVATE ${OpenFHE_SHARED_LIBRARIES})
     target_link_libraries(fedavg_bench PRIVATE ${OpenFHE_SHARED_LIBRARIES})
     target_link_libraries(poly_ml_bench PRIVATE ${OpenFHE_SHARED_LIBRARIES})
@@ -341,5 +313,4 @@ if(UTILITY_BENCH_WITH_OPENFHE)
     target_link_libraries(rolling_avg_opt_bench PRIVATE ${OpenFHE_SHARED_LIBRARIES})
     target_link_libraries(poly_score_opt_bench PRIVATE ${OpenFHE_SHARED_LIBRARIES})
     target_link_libraries(weighted_sum_opt_bench PRIVATE ${OpenFHE_SHARED_LIBRARIES})
-    target_link_libraries(lookup_opt_bench PRIVATE ${OpenFHE_SHARED_LIBRARIES})
 endif()

@@ -8,8 +8,8 @@ Benchmark a true encrypted scalar lookup:
 Enc(product_id) -> programmable bootstrapping LUT -> Enc(product_risk_code)
 ```
 
-This is different from the CKKS one-hot lookup benchmark. There is no one-hot
-mask and no CKKS SIMD arithmetic lookup.
+This is the active lookup benchmark. There is no one-hot mask and no CKKS SIMD
+arithmetic lookup.
 
 ## Input
 
