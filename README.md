@@ -7,6 +7,7 @@ OpenFHE CKKS packed `EvalSum` implementation.
 
 - [CKKS depth recommendations](docs/CKKS_DEPTH_RECOMMENDATIONS.md)
 - [Encrypted comparison next steps](docs/ENCRYPTED_COMPARISON_NEXT_STEPS.md)
+- [Linear score benchmark](docs/LINEAR_SCORE_BENCH.md)
 - [FedAvg merge benchmark](docs/FEDAVG_BENCH_PLAN.md)
 - [Polynomial ML CKKS benchmark](docs/POLY_ML_BENCH_PLAN.md)
 - [Dense 4x8 layer benchmark](docs/DENSE_LAYER_BENCH_PLAN.md)
@@ -162,6 +163,22 @@ Run the FedAvg benchmark:
   --ckks-scale-bits 50 \
   --ckks-first-mod-bits 60 \
   --results results/fedavg_results.csv
+```
+
+Run the linear score benchmark:
+
+```bash
+./build/linear_score_bench \
+  --data data/generated/medium_100k/transactions.csv \
+  --backend all \
+  --threads 1 \
+  --repeat 3 \
+  --ckks-ring-dim 0 \
+  --ckks-batch-size 0 \
+  --ckks-depth 2 \
+  --ckks-scale-bits 50 \
+  --ckks-first-mod-bits 60 \
+  --results results/original/linear_score_100k_repeat3.csv
 ```
 
 Run larger FedAvg benchmarks across several OpenFHE thread settings:

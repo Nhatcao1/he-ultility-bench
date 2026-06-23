@@ -28,6 +28,10 @@ add_executable(function_eval_bench
     src/function_eval_bench.cpp
 )
 
+add_executable(linear_score_bench
+    src/linear_score_bench.cpp
+)
+
 add_executable(sum_amount_opt_bench
     src_optimized/sum_amount/sum_amount_opt_bench.cpp
 )
@@ -65,6 +69,10 @@ target_compile_options(dense_layer_bench PRIVATE
 )
 
 target_compile_options(function_eval_bench PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>
+)
+
+target_compile_options(linear_score_bench PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>
 )
 
@@ -119,6 +127,7 @@ if(UTILITY_BENCH_WITH_OPENFHE)
     target_compile_definitions(poly_ml_bench PRIVATE UTILITY_BENCH_WITH_OPENFHE=1)
     target_compile_definitions(dense_layer_bench PRIVATE UTILITY_BENCH_WITH_OPENFHE=1)
     target_compile_definitions(function_eval_bench PRIVATE UTILITY_BENCH_WITH_OPENFHE=1)
+    target_compile_definitions(linear_score_bench PRIVATE UTILITY_BENCH_WITH_OPENFHE=1)
     target_compile_definitions(sum_amount_opt_bench PRIVATE UTILITY_BENCH_WITH_OPENFHE=1)
     target_compile_definitions(rolling_avg_opt_bench PRIVATE UTILITY_BENCH_WITH_OPENFHE=1)
     target_compile_definitions(poly_score_opt_bench PRIVATE UTILITY_BENCH_WITH_OPENFHE=1)
@@ -130,6 +139,7 @@ if(UTILITY_BENCH_WITH_OPENFHE)
     target_compile_options(poly_ml_bench PRIVATE ${OPENFHE_CXX_FLAGS_LIST})
     target_compile_options(dense_layer_bench PRIVATE ${OPENFHE_CXX_FLAGS_LIST})
     target_compile_options(function_eval_bench PRIVATE ${OPENFHE_CXX_FLAGS_LIST})
+    target_compile_options(linear_score_bench PRIVATE ${OPENFHE_CXX_FLAGS_LIST})
     target_compile_options(sum_amount_opt_bench PRIVATE ${OPENFHE_CXX_FLAGS_LIST})
     target_compile_options(rolling_avg_opt_bench PRIVATE ${OPENFHE_CXX_FLAGS_LIST})
     target_compile_options(poly_score_opt_bench PRIVATE ${OPENFHE_CXX_FLAGS_LIST})
@@ -171,6 +181,14 @@ if(UTILITY_BENCH_WITH_OPENFHE)
         ${OpenFHE_INCLUDE}/binfhe
     )
     target_include_directories(function_eval_bench SYSTEM PRIVATE
+        ${OPENMP_INCLUDES}
+        ${OpenFHE_INCLUDE}
+        ${OpenFHE_INCLUDE}/third-party/include
+        ${OpenFHE_INCLUDE}/core
+        ${OpenFHE_INCLUDE}/pke
+        ${OpenFHE_INCLUDE}/binfhe
+    )
+    target_include_directories(linear_score_bench SYSTEM PRIVATE
         ${OPENMP_INCLUDES}
         ${OpenFHE_INCLUDE}
         ${OpenFHE_INCLUDE}/third-party/include
@@ -238,6 +256,10 @@ if(UTILITY_BENCH_WITH_OPENFHE)
         ${OpenFHE_LIBDIR}
         ${OPENMP_LIBRARIES}
     )
+    target_link_directories(linear_score_bench PRIVATE
+        ${OpenFHE_LIBDIR}
+        ${OPENMP_LIBRARIES}
+    )
     target_link_directories(sum_amount_opt_bench PRIVATE
         ${OpenFHE_LIBDIR}
         ${OPENMP_LIBRARIES}
@@ -265,6 +287,7 @@ if(UTILITY_BENCH_WITH_OPENFHE)
         target_link_options(poly_ml_bench PRIVATE -Wl,--no-as-needed)
         target_link_options(dense_layer_bench PRIVATE -Wl,--no-as-needed)
         target_link_options(function_eval_bench PRIVATE -Wl,--no-as-needed)
+        target_link_options(linear_score_bench PRIVATE -Wl,--no-as-needed)
         target_link_options(sum_amount_opt_bench PRIVATE -Wl,--no-as-needed)
         target_link_options(rolling_avg_opt_bench PRIVATE -Wl,--no-as-needed)
         target_link_options(poly_score_opt_bench PRIVATE -Wl,--no-as-needed)
@@ -277,6 +300,7 @@ if(UTILITY_BENCH_WITH_OPENFHE)
     target_link_options(poly_ml_bench PRIVATE ${OPENFHE_EXE_LINKER_FLAGS_LIST})
     target_link_options(dense_layer_bench PRIVATE ${OPENFHE_EXE_LINKER_FLAGS_LIST})
     target_link_options(function_eval_bench PRIVATE ${OPENFHE_EXE_LINKER_FLAGS_LIST})
+    target_link_options(linear_score_bench PRIVATE ${OPENFHE_EXE_LINKER_FLAGS_LIST})
     target_link_options(sum_amount_opt_bench PRIVATE ${OPENFHE_EXE_LINKER_FLAGS_LIST})
     target_link_options(rolling_avg_opt_bench PRIVATE ${OPENFHE_EXE_LINKER_FLAGS_LIST})
     target_link_options(poly_score_opt_bench PRIVATE ${OPENFHE_EXE_LINKER_FLAGS_LIST})
@@ -287,6 +311,7 @@ if(UTILITY_BENCH_WITH_OPENFHE)
     target_link_libraries(poly_ml_bench PRIVATE ${OpenFHE_SHARED_LIBRARIES})
     target_link_libraries(dense_layer_bench PRIVATE ${OpenFHE_SHARED_LIBRARIES})
     target_link_libraries(function_eval_bench PRIVATE ${OpenFHE_SHARED_LIBRARIES})
+    target_link_libraries(linear_score_bench PRIVATE ${OpenFHE_SHARED_LIBRARIES})
     target_link_libraries(sum_amount_opt_bench PRIVATE ${OpenFHE_SHARED_LIBRARIES})
     target_link_libraries(rolling_avg_opt_bench PRIVATE ${OpenFHE_SHARED_LIBRARIES})
     target_link_libraries(poly_score_opt_bench PRIVATE ${OpenFHE_SHARED_LIBRARIES})

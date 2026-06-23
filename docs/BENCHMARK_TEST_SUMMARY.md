@@ -31,6 +31,45 @@ amount column
 
 Main HE operations: packed encoding, encryption, `EvalSum`, `EvalAdd`, decrypt.
 
+## `linear_score_vector`
+
+Math:
+
+```text
+score_i = 0.00030*x1_i
+        - 0.00020*x2_i
+        + 0.00015*x3_i
+        + 0.00005*amount_i
+        + 0.10000
+```
+
+Plain baseline:
+
+```text
+for each row:
+  checksum += score_i
+```
+
+HE behind the scenes:
+
+```text
+x1, x2, x3, amount
+  -> pack each feature column into CKKS SIMD slots
+  -> encrypt each feature chunk
+
+weights and bias
+  -> encrypt repeated packed vectors
+
+encrypted score vector
+  -> EvalMult encrypted feature by encrypted weight
+  -> EvalAdd all terms
+  -> EvalAdd encrypted bias
+  -> decrypt score vector for checksum accuracy
+```
+
+Main HE operations: ciphertext-ciphertext multiply and ciphertext addition.
+No rotations and no final HE aggregation.
+
 ## `weighted_sum_amount_risk`
 
 Math:
