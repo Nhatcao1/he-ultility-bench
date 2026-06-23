@@ -15,6 +15,11 @@ attempts.
 | `decrypt_time_ms` | CKKS decryption after computation. |
 | `decode_time_ms` | Decode/unpack plaintext result after decryption. |
 | `total_he_time_ms` | Lifecycle timing around encrypted computation: encode + encrypt + encrypted calculation + decrypt + decode. Setup/keygen is separate. |
+| `peak_rss_kb` | Process peak resident memory reported by the OS at result-write time. |
+| `ciphertext_payload_bytes` | Ciphertext payload size in bytes. CKKS rows use a lightweight ciphertext-size estimate unless the benchmark explicitly serializes ciphertexts. |
+| `ciphertext_payload_kb` | Same ciphertext payload size in KiB. |
+| `serialized_ciphertext_bytes` | FedAvg-specific actual serialized ciphertext payload. |
+| `serialized_ciphertext_kb` | FedAvg-specific actual serialized ciphertext payload in KiB. |
 
 For comparison to C++ baseline, prefer:
 
@@ -34,3 +39,19 @@ overall lifecycle slowdown:
 
 All repeat-capable runners now write individual repeat rows and a `_summary_avg`
 row. Use the summary row for plots and reports.
+
+Payload notes:
+
+```text
+CKKS benches:
+  ciphertext_payload_bytes is estimated from ciphertext count,
+  ring dimension, and modulus-chain size.
+
+BinFHE LUT:
+  ciphertext_payload_bytes is estimated from LWE ciphertext count,
+  LWE dimension, and LWE modulus bits.
+
+FedAvg:
+  serialized_ciphertext_bytes is actual serialized ciphertext bytes because
+  that benchmark already serializes ciphertexts as part of its workflow.
+```

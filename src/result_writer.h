@@ -1,5 +1,7 @@
 #pragma once
 
+#include "resource_usage.h"
+
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -41,6 +43,9 @@ struct BenchmarkResult {
     std::size_t scaling_mod_size = 0;
     std::size_t first_mod_size = 0;
     std::size_t rotation_count_reported = 0;
+    std::size_t peak_rss_kb = 0;
+    std::size_t ciphertext_payload_bytes = 0;
+    double ciphertext_payload_kb = 0.0;
     std::string notes;
 };
 
@@ -68,8 +73,25 @@ inline void append_result_csv(
             << "ciphertext_count,slots_per_ciphertext,used_slots_last_ciphertext,"
             << "padding_slots_last_ciphertext,slot_utilization,"
             << "requested_ring_dimension,actual_ring_dimension,security_bits,multiplicative_depth,"
-            << "scaling_mod_size,first_mod_size,rotation_count_reported,notes\n";
+            << "scaling_mod_size,first_mod_size,rotation_count_reported,"
+            << "peak_rss_kb,ciphertext_payload_bytes,ciphertext_payload_kb,notes\n";
     }
+
+    const std::size_t peak_rss_kb =
+        result.peak_rss_kb == 0 ? current_peak_rss_kb() : result.peak_rss_kb;
+    const std::size_t ciphertext_payload_bytes =
+        result.ciphertext_payload_bytes == 0
+            ? estimate_ckks_ciphertext_payload_bytes(
+                  result.ciphertext_count,
+                  result.actual_ring_dimension,
+                  result.multiplicative_depth,
+                  result.scaling_mod_size,
+                  result.first_mod_size)
+            : result.ciphertext_payload_bytes;
+    const double ciphertext_payload_kb =
+        result.ciphertext_payload_kb == 0.0
+            ? bytes_to_kb(ciphertext_payload_bytes)
+            : result.ciphertext_payload_kb;
 
     output << std::setprecision(std::numeric_limits<double>::max_digits10)
            << result.operation << ','
@@ -102,5 +124,8 @@ inline void append_result_csv(
            << result.scaling_mod_size << ','
            << result.first_mod_size << ','
            << result.rotation_count_reported << ','
+           << peak_rss_kb << ','
+           << ciphertext_payload_bytes << ','
+           << ciphertext_payload_kb << ','
            << result.notes << '\n';
 }

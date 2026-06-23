@@ -13,6 +13,7 @@
 // columns actually participate in the timed computation.
 struct Transactions {
     std::vector<std::size_t> customer_id;
+    std::vector<std::size_t> product_id;
     std::vector<std::size_t> channel_id;
     std::vector<double> x1;
     std::vector<double> x2;
@@ -69,6 +70,7 @@ inline Transactions load_transactions_csv(
 
         // Columns follow TRANSACTION_HEADER in scripts/generate_benchmark_data.py.
         data.customer_id.push_back(static_cast<std::size_t>(std::stoull(fields[1])));
+        data.product_id.push_back(static_cast<std::size_t>(std::stoull(fields[2])));
         data.channel_id.push_back(static_cast<std::size_t>(std::stoull(fields[3])));
         data.x1.push_back(std::stod(fields[5]));
         data.x2.push_back(std::stod(fields[6]));

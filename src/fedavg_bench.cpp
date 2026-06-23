@@ -1,4 +1,5 @@
 #include "fedavg_fixture.h"
+#include "resource_usage.h"
 #include "timer.h"
 
 #ifdef UTILITY_BENCH_WITH_OPENFHE
@@ -68,6 +69,8 @@ struct FedAvgResult {
     double max_abs_error_vs_expected = 0.0;
     std::size_t plain_payload_bytes = 0;
     std::size_t serialized_ciphertext_bytes = 0;
+    double serialized_ciphertext_kb = 0.0;
+    std::size_t peak_rss_kb = 0;
     std::size_t requested_ring_dimension = 0;
     std::size_t actual_ring_dimension = 0;
     std::size_t multiplicative_depth = 0;
@@ -187,9 +190,16 @@ void append_result_csv(const std::filesystem::path& path, const FedAvgResult& re
             << "serialize_time_ms,deserialize_time_ms,he_merge_time_ms,decrypt_time_ms,"
             << "decode_time_ms,unflatten_time_ms,total_he_time_ms,"
             << "mae_vs_expected,max_abs_error_vs_expected,plain_payload_bytes,"
-            << "serialized_ciphertext_bytes,requested_ring_dimension,actual_ring_dimension,"
-            << "multiplicative_depth,scaling_mod_size,first_mod_size,notes\n";
+            << "serialized_ciphertext_bytes,serialized_ciphertext_kb,peak_rss_kb,"
+            << "requested_ring_dimension,actual_ring_dimension,multiplicative_depth,"
+            << "scaling_mod_size,first_mod_size,notes\n";
     }
+    const std::size_t peak_rss_kb =
+        result.peak_rss_kb == 0 ? current_peak_rss_kb() : result.peak_rss_kb;
+    const double serialized_ciphertext_kb =
+        result.serialized_ciphertext_kb == 0.0
+            ? bytes_to_kb(result.serialized_ciphertext_bytes)
+            : result.serialized_ciphertext_kb;
     output << std::setprecision(std::numeric_limits<double>::max_digits10)
            << result.fixture << ','
            << result.backend << ','
@@ -214,6 +224,8 @@ void append_result_csv(const std::filesystem::path& path, const FedAvgResult& re
            << result.max_abs_error_vs_expected << ','
            << result.plain_payload_bytes << ','
            << result.serialized_ciphertext_bytes << ','
+           << serialized_ciphertext_kb << ','
+           << peak_rss_kb << ','
            << result.requested_ring_dimension << ','
            << result.actual_ring_dimension << ','
            << result.multiplicative_depth << ','
@@ -234,6 +246,7 @@ FedAvgResult run_plain_fedavg(
     result.slots = 0;
     result.plain_payload_bytes =
         fixture.clients.size() * fixture.param_count * sizeof(double);
+    result.peak_rss_kb = current_peak_rss_kb();
 
     const Timer flatten_timer;
     std::vector<std::vector<double>> copied_flats;
@@ -297,6 +310,8 @@ FedAvgResult summarize_fedavg_results(
     summary.mae_vs_expected = average_field(results, &FedAvgResult::mae_vs_expected);
     summary.max_abs_error_vs_expected =
         average_field(results, &FedAvgResult::max_abs_error_vs_expected);
+    summary.serialized_ciphertext_kb =
+        average_field(results, &FedAvgResult::serialized_ciphertext_kb);
     summary.notes = "repeat_summary;repeat_count=" + std::to_string(results.size()) +
         ";real_calculation_ms=he_merge_time_ms" +
         ";overall_lifecycle_ms=total_he_time_ms;setup_keygen_excluded_from_total";
@@ -461,6 +476,8 @@ FedAvgResult run_openfhe_fedavg(
         result.encode_time_ms + result.encrypt_time_ms + result.serialize_time_ms +
         result.deserialize_time_ms + result.he_merge_time_ms + result.decrypt_time_ms +
         result.decode_time_ms;
+    result.serialized_ciphertext_kb = bytes_to_kb(result.serialized_ciphertext_bytes);
+    result.peak_rss_kb = current_peak_rss_kb();
     result.notes =
 #ifdef _OPENMP
         "fedavg_json_fixture;server_weighted;chunk_pipeline;ciphertext_serialized_in_memory;public_num_examples;he_total_excludes_json_load_and_unflatten;omp_set_num_threads";

@@ -1,5 +1,6 @@
 #include "csv_loader.h"
 #include "plain_ops.h"
+#include "resource_usage.h"
 #include "timer.h"
 
 #ifdef UTILITY_BENCH_WITH_OPENFHE
@@ -94,6 +95,9 @@ struct PolyResult {
     std::size_t scaling_mod_size = 0;
     std::size_t first_mod_size = 0;
     std::size_t bootstrap_levels_after = 0;
+    std::size_t peak_rss_kb = 0;
+    std::size_t ciphertext_payload_bytes = 0;
+    double ciphertext_payload_kb = 0.0;
     std::string notes;
 };
 
@@ -395,8 +399,25 @@ void append_poly_result_csv(const std::filesystem::path& path, const PolyResult&
             << "ciphertext_count,slots_per_ciphertext,used_slots_last_ciphertext,"
             << "padding_slots_last_ciphertext,slot_utilization,requested_ring_dimension,"
             << "actual_ring_dimension,security_bits,multiplicative_depth,scaling_mod_size,"
-            << "first_mod_size,bootstrap_levels_after,notes\n";
+            << "first_mod_size,bootstrap_levels_after,"
+            << "peak_rss_kb,ciphertext_payload_bytes,ciphertext_payload_kb,notes\n";
     }
+
+    const std::size_t peak_rss_kb =
+        result.peak_rss_kb == 0 ? current_peak_rss_kb() : result.peak_rss_kb;
+    const std::size_t ciphertext_payload_bytes =
+        result.ciphertext_payload_bytes == 0
+            ? estimate_ckks_ciphertext_payload_bytes(
+                  result.ciphertext_count,
+                  result.actual_ring_dimension,
+                  result.multiplicative_depth,
+                  result.scaling_mod_size,
+                  result.first_mod_size)
+            : result.ciphertext_payload_bytes;
+    const double ciphertext_payload_kb =
+        result.ciphertext_payload_kb == 0.0
+            ? bytes_to_kb(ciphertext_payload_bytes)
+            : result.ciphertext_payload_kb;
 
     output << std::setprecision(std::numeric_limits<double>::max_digits10)
            << result.operation << ','
@@ -434,6 +455,9 @@ void append_poly_result_csv(const std::filesystem::path& path, const PolyResult&
            << result.scaling_mod_size << ','
            << result.first_mod_size << ','
            << result.bootstrap_levels_after << ','
+           << peak_rss_kb << ','
+           << ciphertext_payload_bytes << ','
+           << ciphertext_payload_kb << ','
            << result.notes << '\n';
 }
 
