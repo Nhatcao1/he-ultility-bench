@@ -70,28 +70,28 @@ encrypted score vector
 Main HE operations: ciphertext-ciphertext multiply and ciphertext addition.
 No rotations and no final HE aggregation.
 
-## `binfhe_lut_product_risk_code`
+## `binfhe_lut_channel_risk_code`
 
 Math:
 
 ```text
-risk_code_i = product_risk_table[product_id_i]
+risk_code_i = channel_risk_table[channel_id_i]
 ```
 
 Plain baseline:
 
 ```text
 for each row:
-  checksum += product_risk_table[product_id_i]
+  checksum += channel_risk_table[channel_id_i]
 ```
 
 HE behind the scenes:
 
 ```text
-product_id
+channel_id
   -> encrypt as a BinFHE/LWE scalar ciphertext
-  -> EvalFunc with arbitrary product-risk LUT
-  -> encrypted product risk code
+  -> EvalFunc with arbitrary channel-risk LUT
+  -> encrypted channel risk code
   -> decrypt only for checksum accuracy
 ```
 

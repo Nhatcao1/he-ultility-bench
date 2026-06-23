@@ -27,13 +27,12 @@
 
 namespace {
 
-constexpr std::size_t kProductDomain = 20;
+constexpr std::size_t kChannelDomain = 10;
 
-// Arbitrary, non-linear fixed-point-ish product risk codes.
-// Interpret 11 as 1.1, 7 as 0.7, etc. The benchmark itself stays integer.
-constexpr std::array<std::uint32_t, kProductDomain> kProductRiskCode = {
-    11, 7, 15, 4, 9, 13, 6, 8, 12, 3,
-    5, 10, 2, 14, 18, 16, 1, 19, 17, 20,
+// Arbitrary, non-linear channel risk codes kept inside p=16 for ring_dim=4096.
+// Interpret 14 as 1.4, 7 as 0.7, etc. The benchmark itself stays integer.
+constexpr std::array<std::uint32_t, kChannelDomain> kChannelRiskCode = {
+    3, 14, 1, 9, 4, 12, 2, 7, 15, 6,
 };
 
 enum class BackendMode {
@@ -44,12 +43,12 @@ enum class BackendMode {
 
 struct CliArgs {
     std::string data_path = "data/generated/medium_100k/transactions.csv";
-    std::filesystem::path results_path = "results/original/binfhe_product_lut.csv";
+    std::filesystem::path results_path = "results/original/binfhe_channel_lut.csv";
     BackendMode backend = BackendMode::All;
     std::vector<std::size_t> thread_counts = {1};
     std::size_t repeat_count = 3;
     std::size_t max_rows = 1000;
-    std::uint32_t binfhe_ring_dim = 8192;
+    std::uint32_t binfhe_ring_dim = 4096;
     std::uint32_t binfhe_logq = 12;
 };
 
@@ -58,8 +57,8 @@ void print_usage(const char* program) {
         << "Usage: " << program << " [--data transactions.csv] "
         << "[--backend plain_cpp|binfhe_lut|all] "
         << "[--threads 1] [--repeat 3] [--max-rows 1000] "
-        << "[--binfhe-ring-dim 8192] [--binfhe-logq 12] "
-        << "[--results results/original/binfhe_product_lut.csv]\n";
+        << "[--binfhe-ring-dim 4096] [--binfhe-logq 12] "
+        << "[--results results/original/binfhe_channel_lut.csv]\n";
 }
 
 BackendMode parse_backend_mode(const std::string& value) {
@@ -162,37 +161,37 @@ std::string repeat_note(std::size_t repeat_index, std::size_t repeat_count) {
            ";repeat_count=" + std::to_string(repeat_count);
 }
 
-std::uint32_t product_risk_code(std::size_t product_id) {
-    if (product_id >= kProductDomain) {
-        throw std::runtime_error("product_id outside product LUT domain: " +
-                                 std::to_string(product_id));
+std::uint32_t channel_risk_code(std::size_t channel_id) {
+    if (channel_id >= kChannelDomain) {
+        throw std::runtime_error("channel_id outside channel LUT domain: " +
+                                 std::to_string(channel_id));
     }
-    return kProductRiskCode[product_id];
+    return kChannelRiskCode[channel_id];
 }
 
-void validate_product_domain(const Transactions& data) {
-    for (const std::size_t product_id : data.product_id) {
-        (void)product_risk_code(product_id);
+void validate_channel_domain(const Transactions& data) {
+    for (const std::size_t channel_id : data.channel_id) {
+        (void)channel_risk_code(channel_id);
     }
 }
 
-double plaintext_product_lut_checksum(
+double plaintext_channel_lut_checksum(
     const Transactions& data,
     std::size_t thread_count) {
     return parallel_sum(data.size(), thread_count, [&](std::size_t row) {
-        return static_cast<double>(product_risk_code(data.product_id[row]));
+        return static_cast<double>(channel_risk_code(data.channel_id[row]));
     });
 }
 
 #ifdef UTILITY_BENCH_WITH_OPENFHE
 
-lbcrypto::NativeInteger product_risk_lut_function(
+lbcrypto::NativeInteger channel_risk_lut_function(
     lbcrypto::NativeInteger input,
     lbcrypto::NativeInteger plaintext_modulus) {
-    const std::uint64_t product_id = input.ConvertToInt();
+    const std::uint64_t channel_id = input.ConvertToInt();
     const std::uint64_t modulus = plaintext_modulus.ConvertToInt();
-    if (product_id < kProductDomain) {
-        return lbcrypto::NativeInteger(kProductRiskCode[product_id] % modulus);
+    if (channel_id < kChannelDomain) {
+        return lbcrypto::NativeInteger(kChannelRiskCode[channel_id] % modulus);
     }
     return lbcrypto::NativeInteger(0);
 }
@@ -249,16 +248,16 @@ BenchmarkResult summarize_results(
     return summary;
 }
 
-BenchmarkResult run_plain_product_lut(
+BenchmarkResult run_plain_channel_lut(
     const Transactions& data,
     std::size_t thread_count) {
     const std::size_t actual_threads = effective_thread_count(thread_count, data.size());
     const Timer timer;
-    const double value = plaintext_product_lut_checksum(data, actual_threads);
+    const double value = plaintext_channel_lut_checksum(data, actual_threads);
     const double plain_time_ms = timer.elapsed_ms();
 
     BenchmarkResult result;
-    result.operation = "binfhe_lut_product_risk_code";
+    result.operation = "binfhe_lut_channel_risk_code";
     result.backend = "plain_cpp";
     result.rows = data.size();
     result.threads = actual_threads;
@@ -266,13 +265,13 @@ BenchmarkResult run_plain_product_lut(
     result.result_value = value;
     result.baseline_value = value;
     result.peak_rss_kb = current_peak_rss_kb();
-    result.notes = "product_id_to_risk_code_plain_table_lookup";
+    result.notes = "channel_id_to_risk_code_plain_table_lookup";
     return result;
 }
 
 #ifdef UTILITY_BENCH_WITH_OPENFHE
 
-BenchmarkResult run_binfhe_product_lut(
+BenchmarkResult run_binfhe_channel_lut(
     const Transactions& data,
     std::size_t thread_count,
     double baseline_value,
@@ -287,9 +286,9 @@ BenchmarkResult run_binfhe_product_lut(
     using lbcrypto::STD128;
 
     if (data.size() == 0) {
-        throw std::runtime_error("BinFHE product LUT requires at least one row");
+        throw std::runtime_error("BinFHE channel LUT requires at least one row");
     }
-    validate_product_domain(data);
+    validate_channel_domain(data);
 
     const std::size_t openfhe_threads = configure_openfhe_threads(thread_count);
 
@@ -308,22 +307,22 @@ BenchmarkResult run_binfhe_product_lut(
 
     const std::uint64_t plaintext_modulus = cc.GetMaxPlaintextSpace().ConvertToInt();
     std::cout << "BinFHE setup: plaintext_modulus=" << plaintext_modulus << std::endl;
-    const std::uint64_t max_input = kProductDomain - 1;
+    const std::uint64_t max_input = kChannelDomain - 1;
     const std::uint64_t max_output =
-        *std::max_element(kProductRiskCode.begin(), kProductRiskCode.end());
+        *std::max_element(kChannelRiskCode.begin(), kChannelRiskCode.end());
     const std::uint64_t required_plaintext_modulus =
         std::max(max_input, max_output) + 1;
     if (plaintext_modulus < required_plaintext_modulus) {
         throw std::runtime_error(
-            "BinFHE plaintext modulus is too small for product risk LUT: p=" +
+            "BinFHE plaintext modulus is too small for channel risk LUT: p=" +
             std::to_string(plaintext_modulus) +
             ", required>=" + std::to_string(required_plaintext_modulus) +
-            ". Increase --binfhe-ring-dim, e.g. --binfhe-ring-dim 8192");
+            ". Increase --binfhe-ring-dim, e.g. --binfhe-ring-dim 4096");
     }
 
     std::cout << "BinFHE setup: GenerateLUTviaFunction" << std::endl;
     auto lut = cc.GenerateLUTviaFunction(
-        product_risk_lut_function,
+        channel_risk_lut_function,
         lbcrypto::NativeInteger(plaintext_modulus));
     const double setup_time_ms = setup_timer.elapsed_ms();
 
@@ -336,17 +335,17 @@ BenchmarkResult run_binfhe_product_lut(
     double he_eval_time_ms = 0.0;
     double decrypt_time_ms = 0.0;
     double result_checksum = 0.0;
-    for (const std::size_t product_id : data.product_id) {
+    for (const std::size_t channel_id : data.channel_id) {
         const Timer encrypt_timer;
-        LWECiphertext encrypted_product = cc.Encrypt(
+        LWECiphertext encrypted_channel = cc.Encrypt(
             secret_key,
-            static_cast<LWEPlaintext>(product_id),
+            static_cast<LWEPlaintext>(channel_id),
             LARGE_DIM,
             plaintext_modulus);
         encrypt_time_ms += encrypt_timer.elapsed_ms();
 
         const Timer eval_timer;
-        LWECiphertext encrypted_code = cc.EvalFunc(encrypted_product, lut);
+        LWECiphertext encrypted_code = cc.EvalFunc(encrypted_channel, lut);
         he_eval_time_ms += eval_timer.elapsed_ms();
 
         LWEPlaintext decrypted = 0;
@@ -366,7 +365,7 @@ BenchmarkResult run_binfhe_product_lut(
         lwe_modulus_bits);
 
     BenchmarkResult result;
-    result.operation = "binfhe_lut_product_risk_code";
+    result.operation = "binfhe_lut_channel_risk_code";
     result.backend = "binfhe_lut";
     result.rows = data.size();
     result.threads = openfhe_threads;
@@ -397,10 +396,10 @@ BenchmarkResult run_binfhe_product_lut(
     result.ciphertext_payload_kb = bytes_to_kb(ciphertext_payload_bytes);
     result.notes =
 #ifdef _OPENMP
-        "product_id_scalar_lut;BinFHE_EvalFunc;programmable_bootstrap;ciphertext_payload_estimate_lwe;streamed_ciphertexts_no_vectors;omp_set_num_threads;setup_recorded_separately;encrypt_decrypt_in_total;plaintext_modulus=" +
+        "channel_id_scalar_lut;BinFHE_EvalFunc;programmable_bootstrap;ciphertext_payload_estimate_lwe;streamed_ciphertexts_no_vectors;omp_set_num_threads;setup_recorded_separately;encrypt_decrypt_in_total;plaintext_modulus=" +
         std::to_string(plaintext_modulus);
 #else
-        "product_id_scalar_lut;BinFHE_EvalFunc;programmable_bootstrap;ciphertext_payload_estimate_lwe;streamed_ciphertexts_no_vectors;openmp_not_seen_by_runner;setup_recorded_separately;encrypt_decrypt_in_total;plaintext_modulus=" +
+        "channel_id_scalar_lut;BinFHE_EvalFunc;programmable_bootstrap;ciphertext_payload_estimate_lwe;streamed_ciphertexts_no_vectors;openmp_not_seen_by_runner;setup_recorded_separately;encrypt_decrypt_in_total;plaintext_modulus=" +
         std::to_string(plaintext_modulus);
 #endif
 
@@ -423,18 +422,18 @@ int main(int argc, char** argv) {
         if (args.max_rows != 0) {
             std::cout << "Applied --max-rows " << args.max_rows << '\n';
         }
-        validate_product_domain(data);
+        validate_channel_domain(data);
 
         std::vector<BenchmarkResult> plain_results;
         plain_results.reserve(args.repeat_count);
         for (std::size_t repeat_index = 1; repeat_index <= args.repeat_count; ++repeat_index) {
-            auto plain = run_plain_product_lut(data, 1);
+            auto plain = run_plain_channel_lut(data, 1);
             plain.notes += ";" + repeat_note(repeat_index, args.repeat_count);
             plain_results.push_back(plain);
         }
         const BenchmarkResult plain_summary = summarize_results(
             plain_results,
-            "binfhe_lut_product_risk_code",
+            "binfhe_lut_channel_risk_code",
             "plain_cpp");
 
         if (wants_plain_cpp(args.backend)) {
@@ -442,13 +441,13 @@ int main(int argc, char** argv) {
                  repeat_index < plain_results.size();
                  ++repeat_index) {
                 append_result_csv(args.results_path, plain_results[repeat_index]);
-                std::cout << "Ran plain_cpp:binfhe_lut_product_risk_code"
+                std::cout << "Ran plain_cpp:binfhe_lut_channel_risk_code"
                           << " repeat=" << (repeat_index + 1) << '/' << args.repeat_count
                           << " in " << plain_results[repeat_index].plain_time_ms
                           << " ms value=" << plain_results[repeat_index].result_value << '\n';
             }
             append_result_csv(args.results_path, plain_summary);
-            std::cout << "Summary plain_cpp:binfhe_lut_product_risk_code"
+            std::cout << "Summary plain_cpp:binfhe_lut_channel_risk_code"
                       << " repeats=" << args.repeat_count
                       << " avg_plain=" << plain_summary.plain_time_ms << " ms\n";
         }
@@ -461,7 +460,7 @@ int main(int argc, char** argv) {
                 for (std::size_t repeat_index = 1;
                      repeat_index <= args.repeat_count;
                      ++repeat_index) {
-                    auto result = run_binfhe_product_lut(
+                    auto result = run_binfhe_channel_lut(
                         data,
                         thread_count,
                         plain_summary.baseline_value,

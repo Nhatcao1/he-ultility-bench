@@ -8,7 +8,7 @@ OpenFHE CKKS packed `EvalSum` implementation.
 - [CKKS depth recommendations](docs/CKKS_DEPTH_RECOMMENDATIONS.md)
 - [Encrypted comparison next steps](docs/ENCRYPTED_COMPARISON_NEXT_STEPS.md)
 - [Linear score benchmark](docs/LINEAR_SCORE_BENCH.md)
-- [BinFHE product LUT benchmark](docs/BINFHE_PRODUCT_LUT_BENCH.md)
+- [BinFHE channel LUT benchmark](docs/BINFHE_CHANNEL_LUT_BENCH.md)
 - [FedAvg merge benchmark](docs/FEDAVG_BENCH_PLAN.md)
 - [Polynomial ML CKKS benchmark](docs/POLY_ML_BENCH_PLAN.md)
 - [Dense 4x8 layer benchmark](docs/DENSE_LAYER_BENCH_PLAN.md)
@@ -182,7 +182,7 @@ Run the linear score benchmark:
   --results results/original/linear_score_100k_repeat3.csv
 ```
 
-Run the BinFHE product LUT benchmark:
+Run the BinFHE channel LUT benchmark:
 
 ```bash
 ./build/binfhe_lut_bench \
@@ -191,8 +191,9 @@ Run the BinFHE product LUT benchmark:
   --threads 1 \
   --repeat 3 \
   --max-rows 100 \
+  --binfhe-ring-dim 4096 \
   --binfhe-logq 12 \
-  --results results/original/binfhe_product_lut_100_repeat3.csv
+  --results results/original/binfhe_channel_lut_100_repeat3.csv
 ```
 
 Run larger FedAvg benchmarks across several OpenFHE thread settings:
