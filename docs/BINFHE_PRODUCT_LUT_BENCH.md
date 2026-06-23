@@ -11,6 +11,11 @@ Enc(product_id) -> programmable bootstrapping LUT -> Enc(product_risk_code)
 This is the active lookup benchmark. There is no one-hot mask and no CKKS SIMD
 arithmetic lookup.
 
+The product table uses IDs `0..19` and risk codes up to `20`, so the BinFHE
+plaintext modulus must be at least `21`. The benchmark defaults to
+`--binfhe-ring-dim 8192`, which gives enough plaintext space for this small
+integer LUT under the current OpenFHE arbitrary-function setup.
+
 ## Input
 
 Use `product_id` from `transactions.csv`.

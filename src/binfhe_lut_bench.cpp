@@ -49,6 +49,7 @@ struct CliArgs {
     std::vector<std::size_t> thread_counts = {1};
     std::size_t repeat_count = 3;
     std::size_t max_rows = 1000;
+    std::uint32_t binfhe_ring_dim = 8192;
     std::uint32_t binfhe_logq = 12;
 };
 
@@ -57,7 +58,7 @@ void print_usage(const char* program) {
         << "Usage: " << program << " [--data transactions.csv] "
         << "[--backend plain_cpp|binfhe_lut|all] "
         << "[--threads 1] [--repeat 3] [--max-rows 1000] "
-        << "[--binfhe-logq 12] "
+        << "[--binfhe-ring-dim 8192] [--binfhe-logq 12] "
         << "[--results results/original/binfhe_product_lut.csv]\n";
 }
 
@@ -133,6 +134,12 @@ CliArgs parse_args(int argc, char** argv) {
             }
         } else if (flag == "--max-rows") {
             args.max_rows = parse_size_arg(i, argc, argv, flag);
+        } else if (flag == "--binfhe-ring-dim") {
+            args.binfhe_ring_dim = static_cast<std::uint32_t>(
+                parse_size_arg(i, argc, argv, flag));
+            if (args.binfhe_ring_dim == 0) {
+                throw std::runtime_error("--binfhe-ring-dim must be positive");
+            }
         } else if (flag == "--binfhe-logq") {
             args.binfhe_logq = static_cast<std::uint32_t>(parse_size_arg(i, argc, argv, flag));
             if (args.binfhe_logq == 0) {
@@ -270,6 +277,7 @@ BenchmarkResult run_binfhe_product_lut(
     std::size_t thread_count,
     double baseline_value,
     double plain_time_ms,
+    std::uint32_t ring_dim,
     std::uint32_t logq) {
     using lbcrypto::BinFHEContext;
     using lbcrypto::GINX;
@@ -287,13 +295,21 @@ BenchmarkResult run_binfhe_product_lut(
 
     const Timer setup_timer;
     auto cc = BinFHEContext();
-    cc.GenerateBinFHEContext(STD128, true, logq, 0, GINX, false);
+    cc.GenerateBinFHEContext(STD128, true, logq, ring_dim, GINX, false);
     auto secret_key = cc.KeyGen();
     cc.BTKeyGen(secret_key);
     const std::uint64_t plaintext_modulus = cc.GetMaxPlaintextSpace().ConvertToInt();
-    if (plaintext_modulus <= 20) {
+    const std::uint64_t max_input = kProductDomain - 1;
+    const std::uint64_t max_output =
+        *std::max_element(kProductRiskCode.begin(), kProductRiskCode.end());
+    const std::uint64_t required_plaintext_modulus =
+        std::max(max_input, max_output) + 1;
+    if (plaintext_modulus < required_plaintext_modulus) {
         throw std::runtime_error(
-            "BinFHE plaintext modulus is too small for product risk LUT");
+            "BinFHE plaintext modulus is too small for product risk LUT: p=" +
+            std::to_string(plaintext_modulus) +
+            ", required>=" + std::to_string(required_plaintext_modulus) +
+            ". Increase --binfhe-ring-dim, e.g. --binfhe-ring-dim 8192");
     }
     auto lut = cc.GenerateLUTviaFunction(
         product_risk_lut_function,
@@ -302,6 +318,7 @@ BenchmarkResult run_binfhe_product_lut(
 
     const auto lwe_params = cc.GetParams()->GetLWEParams();
     const std::size_t lwe_dimension = lwe_params->Getn();
+    const std::size_t actual_ring_dimension = lwe_params->GetN();
     const std::size_t lwe_modulus_bits = lwe_params->Getq().GetMSB();
 
     std::vector<LWECiphertext> encrypted_products;
@@ -367,7 +384,8 @@ BenchmarkResult run_binfhe_product_lut(
     result.used_slots_last_ciphertext = 1;
     result.padding_slots_last_ciphertext = 0;
     result.slot_utilization = 1.0;
-    result.actual_ring_dimension = lwe_dimension;
+    result.requested_ring_dimension = ring_dim;
+    result.actual_ring_dimension = actual_ring_dimension;
     result.security_bits = 128;
     result.scaling_mod_size = lwe_modulus_bits;
     result.first_mod_size = static_cast<std::size_t>(logq);
@@ -376,9 +394,11 @@ BenchmarkResult run_binfhe_product_lut(
     result.ciphertext_payload_kb = bytes_to_kb(ciphertext_payload_bytes);
     result.notes =
 #ifdef _OPENMP
-        "product_id_scalar_lut;BinFHE_EvalFunc;programmable_bootstrap;ciphertext_payload_estimate_lwe;actual_ring_dimension_is_lwe_dimension;omp_set_num_threads;setup_recorded_separately;encrypt_decrypt_in_total";
+        "product_id_scalar_lut;BinFHE_EvalFunc;programmable_bootstrap;ciphertext_payload_estimate_lwe;omp_set_num_threads;setup_recorded_separately;encrypt_decrypt_in_total;plaintext_modulus=" +
+        std::to_string(plaintext_modulus);
 #else
-        "product_id_scalar_lut;BinFHE_EvalFunc;programmable_bootstrap;ciphertext_payload_estimate_lwe;actual_ring_dimension_is_lwe_dimension;openmp_not_seen_by_runner;setup_recorded_separately;encrypt_decrypt_in_total";
+        "product_id_scalar_lut;BinFHE_EvalFunc;programmable_bootstrap;ciphertext_payload_estimate_lwe;openmp_not_seen_by_runner;setup_recorded_separately;encrypt_decrypt_in_total;plaintext_modulus=" +
+        std::to_string(plaintext_modulus);
 #endif
 
     return result;
@@ -443,6 +463,7 @@ int main(int argc, char** argv) {
                         thread_count,
                         plain_summary.baseline_value,
                         plain_summary.plain_time_ms,
+                        args.binfhe_ring_dim,
                         args.binfhe_logq);
                     result.notes += ";" + repeat_note(repeat_index, args.repeat_count);
                     he_results.push_back(result);

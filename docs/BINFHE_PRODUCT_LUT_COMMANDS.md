@@ -24,6 +24,7 @@ rm -f results/original/binfhe_product_lut_10_repeat3.csv
   --threads 1 \
   --repeat 3 \
   --max-rows 10 \
+  --binfhe-ring-dim 8192 \
   --binfhe-logq 12 \
   --results results/original/binfhe_product_lut_10_repeat3.csv
 
@@ -41,6 +42,7 @@ rm -f results/original/binfhe_product_lut_100_repeat3.csv
   --threads 1 \
   --repeat 3 \
   --max-rows 100 \
+  --binfhe-ring-dim 8192 \
   --binfhe-logq 12 \
   --results results/original/binfhe_product_lut_100_repeat3.csv
 
@@ -58,6 +60,7 @@ rm -f results/original/binfhe_product_lut_1k_repeat3.csv
   --threads 1 \
   --repeat 3 \
   --max-rows 1000 \
+  --binfhe-ring-dim 8192 \
   --binfhe-logq 12 \
   --results results/original/binfhe_product_lut_1k_repeat3.csv
 
