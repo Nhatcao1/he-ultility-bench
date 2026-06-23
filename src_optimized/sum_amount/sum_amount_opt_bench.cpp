@@ -35,7 +35,6 @@ enum class BackendMode {
 
 enum class AddVariant {
     AddThenSum,
-    AddThenSumPreencrypted,
     ParallelEncryptAddThenSum,
     Both,
 };
@@ -67,8 +66,7 @@ void print_usage(const char* program) {
     std::cerr
         << "Usage: " << program << " [--data transactions.csv] "
         << "[--backend plain_cpp|openfhe_ckks|all] "
-        << "[--variant add_then_sum|add_then_sum_preencrypted|"
-        << "parallel_encrypt_add_then_sum|both] "
+        << "[--variant add_then_sum|parallel_encrypt_add_then_sum|both] "
         << "[--threads 1] [--repeat 3] [--max-rows 100000] "
         << "[--ckks-ring-dim 8192] [--ckks-batch-size 0] "
         << "[--ckks-depth 1] [--ckks-scale-bits 30] [--ckks-first-mod-bits 40] "
@@ -91,9 +89,6 @@ BackendMode parse_backend_mode(const std::string& value) {
 AddVariant parse_add_variant(const std::string& value) {
     if (value == "add_then_sum") {
         return AddVariant::AddThenSum;
-    }
-    if (value == "add_then_sum_preencrypted") {
-        return AddVariant::AddThenSumPreencrypted;
     }
     if (value == "parallel_encrypt_add_then_sum") {
         return AddVariant::ParallelEncryptAddThenSum;
@@ -120,8 +115,6 @@ std::string add_variant_name(AddVariant variant) {
     switch (variant) {
         case AddVariant::AddThenSum:
             return "add_then_sum";
-        case AddVariant::AddThenSumPreencrypted:
-            return "add_then_sum_preencrypted";
         case AddVariant::ParallelEncryptAddThenSum:
             return "parallel_encrypt_add_then_sum";
         case AddVariant::Both:
@@ -404,7 +397,6 @@ BenchmarkResult run_openfhe_sum_amount_variant(
     using lbcrypto::PKE;
     using lbcrypto::Plaintext;
 
-    const bool preencrypted_metric = variant == AddVariant::AddThenSumPreencrypted;
     const bool parallel_encrypt = variant == AddVariant::ParallelEncryptAddThenSum;
     const std::size_t openfhe_threads = configure_openfhe_threads(thread_count);
 
@@ -548,9 +540,8 @@ BenchmarkResult run_openfhe_sum_amount_variant(
     const double result_value = decoded_values[0].real();
     const double decode_time_ms = decode_timer.elapsed_ms();
 
-    const double total_he_time_ms = preencrypted_metric
-        ? he_eval_time_ms + decrypt_time_ms + decode_time_ms
-        : encode_time_ms + encrypt_time_ms + he_eval_time_ms + decrypt_time_ms + decode_time_ms;
+    const double total_he_time_ms =
+        encode_time_ms + encrypt_time_ms + he_eval_time_ms + decrypt_time_ms + decode_time_ms;
     const double absolute_error = std::abs(result_value - baseline_value);
     const double relative_error = divide_or_zero(absolute_error, std::abs(baseline_value));
 
@@ -592,9 +583,6 @@ BenchmarkResult run_openfhe_sum_amount_variant(
 
     std::string notes = "src_optimized;sum_amount_only;variant=" + variant_name +
         ";add_ciphertext_chunks_before_final_evalsum";
-    if (preencrypted_metric) {
-        notes += ";preencrypted_metric;encode_encrypt_recorded_but_excluded_from_total";
-    }
     if (parallel_encrypt) {
         notes += ";parallel_chunk_encrypt;encrypt_time_is_encode_encrypt_wall_time";
     }
@@ -604,7 +592,7 @@ BenchmarkResult run_openfhe_sum_amount_variant(
     notes += ";openmp_not_seen_by_runner";
 #endif
     notes += ";setup_recorded_separately";
-    notes += preencrypted_metric ? ";decrypt_decode_in_total" : ";encrypt_decrypt_in_total";
+    notes += ";encrypt_decrypt_in_total";
     result.notes = notes;
 
     return result;
@@ -669,7 +657,6 @@ int main(int argc, char** argv) {
             for (const std::size_t thread_count : args.thread_counts) {
                 for (const AddVariant variant :
                      {AddVariant::AddThenSum,
-                      AddVariant::AddThenSumPreencrypted,
                       AddVariant::ParallelEncryptAddThenSum}) {
                     if (!wants_variant(args.variant, variant)) {
                         continue;

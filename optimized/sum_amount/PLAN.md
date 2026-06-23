@@ -119,7 +119,6 @@ Current variants:
 | Variant | Purpose |
 | --- | --- |
 | `add_then_sum` | Main end-to-end optimized path: encode/encrypt chunks, add packed ciphertext chunks slot-wise first, then run one final `EvalSum`. |
-| `add_then_sum_preencrypted` | Server-side eval metric: same ciphertext math, but `total_he_time_ms` excludes encode/encrypt to model data that is already encrypted before reaching the compute server. |
 | `parallel_encrypt_add_then_sum` | Tries parallel chunk encode/encrypt before the same add-then-sum eval. Useful for checking whether encryption dominates the 1m-row runtime. |
 
 The runner defaults to one OpenFHE thread and three repeats:
@@ -202,10 +201,15 @@ Experiment order:
 1. Original code, normal Q, auto ring.
 2. Original code, lower Q, auto ring.
 3. Original code, lower Q, hard ring 8192.
-4. Optimized code, lower Q, hard ring 8192, compare `add_then_sum`,
-   `add_then_sum_preencrypted`, and `parallel_encrypt_add_then_sum`.
+4. Optimized code, lower Q, hard ring 8192, compare `add_then_sum`
+   and `parallel_encrypt_add_then_sum`.
 5. If rejected, lower Q further and repeat.
 ```
+
+Hard rule: optimized benchmark variants must operate on encrypted row-level
+inputs. Do not include variants that aggregate, filter, mask, or otherwise
+compute the target before encryption, and do not exclude encode/encrypt from
+the main comparison timing.
 
 ## Iteration Rule
 

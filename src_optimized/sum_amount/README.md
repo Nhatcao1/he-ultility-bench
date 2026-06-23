@@ -25,11 +25,14 @@ Current variants:
 | Variant | Meaning |
 | --- | --- |
 | `add_then_sum` | End-to-end encrypted sum: encode/encrypt chunks, add packed ciphertext chunks slot-wise, then run one final `EvalSum`. |
-| `add_then_sum_preencrypted` | Same encrypted eval as `add_then_sum`, but reports `total_he_time_ms` as eval+decrypt+decode only. Encode/encrypt are still measured in their own columns. |
 | `parallel_encrypt_add_then_sum` | Same math as `add_then_sum`, but tries chunk-level parallel encode/encrypt before the final add-then-sum eval. |
 
 All variants compute the same scalar `SUM(amount)` and must be compared
 against the reference `utility_bench --bench sum_amount` output.
+
+Optimization rule: all benchmarked variants must encrypt the row-level input
+before doing the optimized HE calculation. Do not add variants that aggregate,
+filter, or otherwise compute the answer before encryption.
 
 The executable defaults to:
 

@@ -5,6 +5,13 @@ test in `utility_bench`. The report contains useful hints, but most of the
 claimed speed comes from undisclosed implementation details, so we should treat
 it as a checklist for better experiments rather than a recipe.
 
+## Non-Negotiable Rule
+
+Optimization must happen under encryption. Do not add or keep benchmark
+variants that aggregate, filter, join, mask, or otherwise compute the target
+answer before encryption. Plain C++ is only the baseline, not an optimized HE
+path.
+
 ## What Is Worth Doing Now
 
 | Item | Why it matters | How we use it |
@@ -14,7 +21,7 @@ it as a checklist for better experiments rather than a recipe.
 | Thread sweep | The report used single-thread mode, which is useful for fairness but not a real speed optimization. | Keep running `--threads 1 4 8`. Treat the 1-thread result as the clean baseline and multi-thread results as scaling behavior. |
 | Parameter sweep | Ring dimension, depth, modulus chain, and scale bits decide the speed/accuracy/security tradeoff. | For serious benches, sweep `ckks-depth`, `ckks-scale-bits`, `ckks-first-mod-bits`, and `ckks-batch-size`, while recording actual ring dimension chosen by OpenFHE. |
 | Build/runtime configuration | `-O3`, native CPU flags, OpenMP, and OpenFHE build options can change timings a lot. | Add a benchmark metadata note for compiler flags and OpenFHE build options when running on the server. Do not compare results from unknown builds as if they are equal. |
-| Precompute and reuse constants | HE code can look much faster if masks, plaintext constants, eval keys, and encoded values are reused. | State clearly which values are precomputed. Do not include precomputation in eval-only time unless that is the thing being tested. |
+| Precompute and reuse constants | HE code can look much faster if plaintext constants, eval keys, and encoded fixed values are reused. | Only precompute values that do not contain row-level target results. Never precompute the aggregation, filter result, lookup result, or mask that the HE benchmark is supposed to compute. |
 | Ciphertext size | Lower ciphertext expansion can improve memory, serialization, and network latency. | Measure serialized ciphertext bytes for benches where transfer/storage matters, especially FedAvg and future client/server tests. |
 | Bounded input range | Smaller numeric domains can allow cheaper approximation or fixed-point choices. | Record input scaling and value range for comparison, trig, polynomial, and dense-layer benches. |
 

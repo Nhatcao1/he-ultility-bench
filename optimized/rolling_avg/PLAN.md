@@ -185,22 +185,6 @@ three separate times.
 
 This is likely the most meaningful rolling-specific optimization.
 
-### `preencrypted_vector`
-
-Same as Schema A, but report:
-
-```text
-total_he_time_ms = he_eval_time_ms + decrypt_time_ms + decode_time_ms
-```
-
-Encode/encrypt remain recorded in their own columns.
-
-Purpose:
-
-```text
-Measure the online encrypted rolling calculation after data is already encrypted.
-```
-
 ## Avoid Fake Optimizations
 
 Do not optimize by:
@@ -208,6 +192,7 @@ Do not optimize by:
 | Shortcut | Why not |
 | --- | --- |
 | Precomputing rolling windows in plaintext | Breaks the encrypted-data benchmark. |
+| Doing any target calculation before encryption | Violates the rule that optimization must happen under encryption. |
 | Dropping overlap rows | Creates rotation wraparound errors. |
 | Comparing Schema A timing against Schema B timing | Schema B includes final `EvalSum`; Schema A does not. |
 | Lowering precision without recording error | Could hide wrong results as speed. |
