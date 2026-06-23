@@ -408,6 +408,27 @@ encrypted z
 
 This is the deepest non-bootstrap polynomial test.
 
+### `poly_score_degree7_bootstrap`
+
+Math:
+
+```text
+same p7(z) as poly_score_degree7
+```
+
+HE behind the scenes:
+
+```text
+encrypted z
+  -> EvalBootstrap(z)
+  -> then compute degree-7 polynomial
+  -> EvalSum
+  -> decrypt scalar result
+```
+
+This is the preferred first CKKS bootstrap benchmark because it is lighter than
+degree 9 while still exercising bootstrap plus nonlinear polynomial evaluation.
+
 ### `poly_score_degree9_bootstrap`
 
 Math:
@@ -568,7 +589,7 @@ decrypt.
 | Slot rotations | `rolling_avg_amount_w3/w5/w9` |
 | Slot reduction / aggregation | `sum_amount`, weighted sums, rolling average scalar result, polynomial scores |
 | Scheme-switching comparison | `compare_amount_gt_5000` |
-| Bootstrapping | `poly_score_degree9_bootstrap` |
+| Bootstrapping | `poly_score_degree7_bootstrap`, `poly_score_degree9_bootstrap` |
 | Serialization/deserialization | FedAvg benchmark |
 
 ## Notes

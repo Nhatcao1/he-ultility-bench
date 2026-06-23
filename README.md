@@ -251,17 +251,19 @@ Run polynomial ML-style CKKS depth and bootstrap benchmarks:
 
 ./build/poly_ml_bench \
   --data data/generated/medium_100k/transactions.csv \
-  --bench poly_score_degree9_bootstrap \
-  --backend all \
+  --max-rows 100 \
+  --bench poly_score_degree7_bootstrap \
+  --backend openfhe_ckks \
   --threads 1 \
+  --repeat 1 \
   --ckks-ring-dim 0 \
-  --ckks-batch-size 1024 \
-  --ckks-depth 9 \
-  --ckks-scale-bits 59 \
+  --ckks-batch-size 16 \
+  --ckks-depth 12 \
+  --ckks-scale-bits 45 \
   --ckks-first-mod-bits 60 \
-  --bootstrap-levels-after 10 \
-  --bootstrap-level-budget 4 4 \
-  --results results/poly_ml_bootstrap_smoke.csv
+  --bootstrap-levels-after 12 \
+  --bootstrap-level-budget 5 5 \
+  --results results/original/poly_degree7_bootstrap_100_repeat1.csv
 ```
 
 For CKKS aggregation, `tiny_1k` is only a smoke test. It can be smaller than the

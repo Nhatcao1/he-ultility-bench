@@ -32,12 +32,13 @@ Lower-degree benchmarks stop the polynomial at degree 3 or degree 7.
 | `poly_score_degree3` | 3 | No | First nonlinear ML-style activation. |
 | `poly_score_degree7` | 7 | No | Deeper ciphertext-ciphertext multiplication chain. |
 | `poly_score_degree9` | 9 | No | Higher depth and precision stress without refresh. |
+| `poly_score_degree7_bootstrap` | 7 | Yes | More practical bootstrap trial than degree 9. |
 | `poly_score_degree9_bootstrap` | 9 | Yes | Measures CKKS bootstrap cost before degree-9 polynomial evaluation. |
 | `all_poly` | mixed | mixed | Runs every polynomial benchmark. |
 
-`poly_score_degree9_bootstrap` bootstraps the encrypted linear score `z` before
-evaluating the polynomial. This is intentionally a bootstrap timing/accuracy
-path, not an exact emulation of a production neural network.
+Bootstrap variants bootstrap the encrypted linear score `z` before evaluating
+the polynomial. Degree 7 is the preferred first bootstrap target because degree
+9 has been too heavy and parameter-sensitive on the server.
 
 ## Timing Boundary
 
@@ -113,41 +114,52 @@ Degree 9 without bootstrapping:
   --results results/poly_ml_degree9_100k.csv
 ```
 
-Degree 9 with CKKS bootstrapping:
+Degree 7 with CKKS bootstrapping:
 
 ```bash
+rm -f results/original/poly_degree7_bootstrap_100_repeat1.csv
+
 ./build/poly_ml_bench \
   --data data/generated/medium_100k/transactions.csv \
-  --bench poly_score_degree9_bootstrap \
-  --backend all \
-  --threads 1 4 8 \
+  --max-rows 100 \
+  --bench poly_score_degree7_bootstrap \
+  --backend openfhe_ckks \
+  --threads 1 \
+  --repeat 1 \
   --ckks-ring-dim 0 \
-  --ckks-batch-size 0 \
-  --ckks-depth 9 \
-  --ckks-scale-bits 59 \
+  --ckks-batch-size 16 \
+  --ckks-depth 12 \
+  --ckks-scale-bits 45 \
   --ckks-first-mod-bits 60 \
-  --bootstrap-levels-after 10 \
-  --bootstrap-level-budget 4 4 \
-  --results results/poly_ml_degree9_bootstrap_100k.csv
+  --bootstrap-levels-after 12 \
+  --bootstrap-level-budget 5 5 \
+  --results results/original/poly_degree7_bootstrap_100_repeat1.csv
 ```
 
-For the first bootstrap smoke test, reduce rows or slots:
+If that still hits CRT table sizing, try depth/levels-after `13` with the same
+budget. If it is killed, lower `--ckks-scale-bits` to `40` and
+`--ckks-first-mod-bits` to `50`.
+
+Degree 9 with CKKS bootstrapping remains a stress target:
 
 ```bash
+rm -f results/original/poly_degree9_bootstrap_16_repeat1.csv
+
 ./build/poly_ml_bench \
   --data data/generated/medium_100k/transactions.csv \
-  --max-rows 1000 \
+  --max-rows 16 \
   --bench poly_score_degree9_bootstrap \
-  --backend all \
+  --backend openfhe_ckks \
   --threads 1 \
+  --repeat 1 \
   --ckks-ring-dim 0 \
-  --ckks-batch-size 1024 \
-  --ckks-depth 9 \
-  --ckks-scale-bits 59 \
+  --ckks-batch-size 16 \
+  --ckks-depth 13 \
+  --ckks-scale-bits 45 \
   --ckks-first-mod-bits 60 \
-  --bootstrap-levels-after 10 \
-  --bootstrap-level-budget 4 4 \
-  --results results/poly_ml_bootstrap_smoke.csv
+  --bootstrap-levels-after 13 \
+  --bootstrap-level-budget 5 5 \
+  --results results/original/poly_degree9_bootstrap_16_repeat1.csv
 ```
 
 ## Metrics

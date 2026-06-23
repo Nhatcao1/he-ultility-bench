@@ -105,7 +105,7 @@ void print_usage(const char* program) {
     std::cerr
         << "Usage: " << program << " [--data transactions.csv] "
         << "[--bench poly_score_degree3|poly_score_degree7|poly_score_degree9|"
-        << "poly_score_degree9_bootstrap|all_poly] "
+        << "poly_score_degree7_bootstrap|poly_score_degree9_bootstrap|all_poly] "
         << "[--backend plain_cpp|openfhe_ckks|all] [--threads 1 4 8] "
         << "[--repeat 3] "
         << "[--max-rows 1000] [--ckks-ring-dim 0] [--ckks-batch-size 0] "
@@ -233,6 +233,7 @@ std::map<std::string, BenchSpec> available_benches() {
         {"poly_score_degree3", {"poly_score_degree3", 3, false}},
         {"poly_score_degree7", {"poly_score_degree7", 7, false}},
         {"poly_score_degree9", {"poly_score_degree9", 9, false}},
+        {"poly_score_degree7_bootstrap", {"poly_score_degree7_bootstrap", 7, true}},
         {"poly_score_degree9_bootstrap", {"poly_score_degree9_bootstrap", 9, true}},
     };
 }
@@ -248,6 +249,7 @@ std::vector<BenchSpec> expand_benches(const std::vector<std::string>& requested)
                      std::string("poly_score_degree3"),
                      std::string("poly_score_degree7"),
                      std::string("poly_score_degree9"),
+                     std::string("poly_score_degree7_bootstrap"),
                      std::string("poly_score_degree9_bootstrap"),
                  }) {
                 if (seen.insert(bench_name).second) {
