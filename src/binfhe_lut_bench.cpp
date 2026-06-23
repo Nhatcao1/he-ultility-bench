@@ -321,31 +321,23 @@ BenchmarkResult run_binfhe_product_lut(
     const std::size_t actual_ring_dimension = lwe_params->GetN();
     const std::size_t lwe_modulus_bits = lwe_params->Getq().GetMSB();
 
-    std::vector<LWECiphertext> encrypted_products;
-    encrypted_products.reserve(data.size());
     double encrypt_time_ms = 0.0;
+    double he_eval_time_ms = 0.0;
+    double decrypt_time_ms = 0.0;
+    double result_checksum = 0.0;
     for (const std::size_t product_id : data.product_id) {
         const Timer encrypt_timer;
-        encrypted_products.push_back(cc.Encrypt(
+        LWECiphertext encrypted_product = cc.Encrypt(
             secret_key,
             static_cast<LWEPlaintext>(product_id),
             LARGE_DIM,
-            plaintext_modulus));
+            plaintext_modulus);
         encrypt_time_ms += encrypt_timer.elapsed_ms();
-    }
 
-    std::vector<LWECiphertext> encrypted_risk_codes;
-    encrypted_risk_codes.reserve(data.size());
-    double he_eval_time_ms = 0.0;
-    for (auto& encrypted_product : encrypted_products) {
         const Timer eval_timer;
-        encrypted_risk_codes.push_back(cc.EvalFunc(encrypted_product, lut));
+        LWECiphertext encrypted_code = cc.EvalFunc(encrypted_product, lut);
         he_eval_time_ms += eval_timer.elapsed_ms();
-    }
 
-    double decrypt_time_ms = 0.0;
-    double result_checksum = 0.0;
-    for (auto& encrypted_code : encrypted_risk_codes) {
         LWEPlaintext decrypted = 0;
         const Timer decrypt_timer;
         cc.Decrypt(secret_key, encrypted_code, &decrypted, plaintext_modulus);
@@ -394,10 +386,10 @@ BenchmarkResult run_binfhe_product_lut(
     result.ciphertext_payload_kb = bytes_to_kb(ciphertext_payload_bytes);
     result.notes =
 #ifdef _OPENMP
-        "product_id_scalar_lut;BinFHE_EvalFunc;programmable_bootstrap;ciphertext_payload_estimate_lwe;omp_set_num_threads;setup_recorded_separately;encrypt_decrypt_in_total;plaintext_modulus=" +
+        "product_id_scalar_lut;BinFHE_EvalFunc;programmable_bootstrap;ciphertext_payload_estimate_lwe;streamed_ciphertexts_no_vectors;omp_set_num_threads;setup_recorded_separately;encrypt_decrypt_in_total;plaintext_modulus=" +
         std::to_string(plaintext_modulus);
 #else
-        "product_id_scalar_lut;BinFHE_EvalFunc;programmable_bootstrap;ciphertext_payload_estimate_lwe;openmp_not_seen_by_runner;setup_recorded_separately;encrypt_decrypt_in_total;plaintext_modulus=" +
+        "product_id_scalar_lut;BinFHE_EvalFunc;programmable_bootstrap;ciphertext_payload_estimate_lwe;streamed_ciphertexts_no_vectors;openmp_not_seen_by_runner;setup_recorded_separately;encrypt_decrypt_in_total;plaintext_modulus=" +
         std::to_string(plaintext_modulus);
 #endif
 
